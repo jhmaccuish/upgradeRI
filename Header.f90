@@ -1,20 +1,25 @@
     module Header
+    
+!#include "../globalMacros.txt"
+#include "globalMacros.txt"
 
     integer, parameter :: rk = selected_real_kind(15)
 
-    integer, parameter :: numPointsType = 1
-    integer, parameter :: numPointsA = 15 !30 !20 !45
-    integer, parameter :: numPointsProd = 5!10 !
+    integer, parameter :: numPointsType = TYPES_SIZE !1!
+    integer, parameter :: numPointsA = 50!28!16 !15 !30 !20 !45
+  
+    integer, parameter :: numPointsProd = PROD_SIZE !5!10 !
     integer, parameter :: numPointsY = 2*numPointsProd !20
-    integer, parameter :: numAIME = numPointsA  !10 !5
+    integer, parameter :: numAIME = 8!numPointsA  !10 !5
     integer, parameter :: numPointsL = 2
     integer, parameter :: numPointsSPA = 11
-    integer, parameter :: numSims =  5000!1016!  250! 10000!
-    integer, parameter :: startAge =  50 !52 !20!
+    integer, parameter :: numSims =  1016!  5000!250! 10000!
+    integer, parameter :: startAge =  52 !20!
     integer, parameter :: endAge = 105
     integer, parameter :: Tperiods = endAge -startAge
     integer, parameter :: Tretire =60 -startAge
-    integer, parameter :: TendRI = Tretire +  numPointsSPA - 1
+    integer, parameter :: TrueSPA = 1!11!60 -startAge
+    integer, parameter :: TendRI = 1!Tretire +  numPointsSPA - 1!1!
     integer, parameter :: normBnd = 4
     integer, parameter :: dimEstimation = 6
     integer, parameter :: spouseretire = 65 -startAge
@@ -42,6 +47,7 @@
         real (kind=rk) :: k
         real (kind=rk) :: tol
         real (kind=rk) :: p
+        real (kind=rk) :: lambda
     end type structparamstype
 
     type gridsType
@@ -73,10 +79,10 @@
 
     !! For mpi
     integer :: rank, ierror, procsize
-    integer, parameter :: mpiDim =  numPointsA * numAIME !*numPointsSPA
+    integer, parameter :: mpiDim =  numPointsA * numAIME
 
     !! Test controls
     logical, parameter :: fullLifeCycle = .FALSE.
-    logical, parameter :: intermediateToFile = .TRUE.
+    logical, parameter :: intermediateToFile = .FALSE.
 
     end module Header
