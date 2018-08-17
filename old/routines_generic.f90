@@ -4,7 +4,9 @@
     module routines_generic
     !use precisions
     use Header
-
+!#include "../globalMacros.txt"
+#include "globalMacros.txt"
+    
     contains
     subroutine linearinterp1(xgrid, ygrid, length, xval, yval, extrapbot, extraptop)
     ! Subroutine for linear interpolation
@@ -1872,12 +1874,13 @@
     end function
     !Last-modified: 15 Aug 2011 06:37:29 PM
 
-    SUBROUTINE amoeba(p,y,ftol,func,iter)
+    SUBROUTINE amoeba(p,y,ftol,func,iter,show,abtol)
     IMPLICIT NONE
     INTEGER(kind=4), INTENT(OUT) :: iter
-    REAL(kind=rk), INTENT(IN) :: ftol
+    REAL(kind=rk), INTENT(IN) :: ftol,abtol
     REAL(kind=rk), DIMENSION(:), INTENT(INOUT) :: y
     REAL(kind=rk), DIMENSION(:,:), INTENT(INOUT) :: p
+    logical,intent(in) :: show
     INTERFACE
     FUNCTION func(x)
     use header
@@ -1886,7 +1889,7 @@
     REAL(kind=rk) :: func
     END FUNCTION func
     END INTERFACE
-    INTEGER(kind=4), PARAMETER :: ITMAX=5000
+    INTEGER(kind=4), PARAMETER :: ITMAX=500 !1000
     REAL(kind=rk), PARAMETER :: TINY=1.0D-10
     INTEGER(kind=4) :: ihi,ndim
     REAL(kind=rk), DIMENSION(size(p,2)) :: psum
@@ -1914,15 +1917,20 @@
         inhi=imaxloc(y(:))
         y(ihi)=ytmp
         rtol=2.0D0*abs(y(ihi)-y(ilo))/(abs(y(ihi))+abs(y(ilo))+TINY)
-        if (rank==0) then
-            print '("Relative tolerance",f6.3, " Value ",f16.3)',rtol,y(ilo)
+        if (rank==0 .AND. show) then
+            print '("Relative tolerance",f9.7, " Value ",f16.3, "Iter",I4)',rtol,y(ilo), iter
         end if
-        if (rtol < ftol) then
+        if (rtol < ftol .OR. y(ilo)<abtol) then
             call swap_scalar(y(1),y(ilo))
             call swap_vector(p(1,:),p(ilo,:))
             RETURN
         end if
-        if (iter >= ITMAX) STOP 'ERROR: ITMAX exceeded in amoeba'
+        if (iter >= ITMAX) then
+            !write(*,*),  'ERROR: ITMAX exceeded in amoeba' 
+            call swap_scalar(y(1),y(ilo))
+            call swap_vector(p(1,:),p(ilo,:))
+            return
+        end if 
         ytry=amotry(-1.0D0)
         iter=iter+1
         if (ytry <= y(ilo)) then
@@ -2297,4 +2305,159 @@
     res = factorial (n) / (factorial (k) * factorial (n - k))
 
     end function choose
+     ! ---------------------------------------------------------------------------------------!
+    ! ---------------------------------------------------------------------------------------!
+    ! Extrapolation is by default here. There is no option to use the bottom value (as I have
+    ! in the one-dimensional linear interpolation).
+
+    subroutine linearinterp2_vec(x1grid, x2grid, dim1, dim2, dim3, x1val, x2val, yval, ygrid)
+    !use types
+    implicit none
+    ! Arguments
+    integer, intent (in) :: dim1
+    integer, intent (in) :: dim2
+    integer, intent (in) :: dim3
+    real (kind=rk), intent (in) :: x1grid(dim1)
+    real (kind=rk), intent (in) :: x2grid(dim2)
+    real (kind=rk), intent (in) :: x1val
+    real (kind=rk), intent (in) :: x2val
+    real (kind=rk), intent (out) :: yval(dim3)
+    real (kind=rk), intent (in) :: ygrid(dim1, dim2,dim3)
+
+    ! For programme
+    integer :: x1lowerloc
+    integer :: x2lowerloc
+    integer :: scratch_nearestloc
+    integer :: newxgridlowerloc
+    real (kind=rk) :: newygrid(2,dim3)
+    real (kind=rk) :: newxgrid(2)
+
+    !Have commented out for speed
+    if ((size(x1grid).ne.dim1) .or. (size(x2grid).ne.dim2)) then
+        write (*, *) 'An argument in linearinterp2 is not of the specified length'
+        stop
+    end if
+
+    call findingridr(x1grid, dim1, x1val, scratch_nearestloc, x1lowerloc)
+
+    if (x1lowerloc.eq.0) then
+        x1lowerloc = 1
+    end if
+    if (x1lowerloc.eq.dim1) then
+        x1lowerloc = dim1 - 1
+    end if
+
+    ! Find the square
+    call findingridr(x2grid, dim2, x2val, scratch_nearestloc, x2lowerloc)
+
+    ! Find if any of the values are off the grid
+
+    if (x2lowerloc.eq.0) then
+        x2lowerloc = 1
+    end if
+    if (x2lowerloc.eq.dim2) then
+        x2lowerloc = dim2 - 1
+    end if
+
+
+
+
+    !write(*,*) x1lowerloc
+    !write(*,*) x2lowerloc
+    !write(*,*) dim1
+    !write(*,*) ygrid(:,x2lowerloc)
+    !write(*,*) x1grid
+
+    ! Now do linearinterpolation along the first dimension
+    !        if (check1) then
+    !        write(*,*) x1lowerloc, x2lowerloc
+    !        write(*,*) dim1, dim2
+    !        write(*,*) x1val
+    !        write(*,*) ygrid
+    !        stop
+    !        end if
+
+    call linearinterpfromlocations_vec(x1grid, ygrid(:,x2lowerloc,:), x1lowerloc, x1val, dim1,dim3, 1, 1, newygrid(1,:))
+    call linearinterpfromlocations_vec(x1grid, ygrid(:,(x2lowerloc+1),:), x1lowerloc, x1val, dim1,dim3, 1, 1, newygrid(2,:))
+
+
+    ! Now generate a new grid from from the x2 bounds (a new ygrid has already bee generated)
+    newxgrid(1) = x2grid(x2lowerloc)
+    newxgrid(2) = x2grid(x2lowerloc+1)
+
+    !Think this is redundant
+    if (x2lowerloc.eq.0) then
+        newxgridlowerloc = 0
+    else if (x2lowerloc.eq.dim2) then
+        newxgridlowerloc = 2
+    else
+        newxgridlowerloc = 1
+    end if
+
+    call linearinterpfromlocations_vec(newxgrid, newygrid, newxgridlowerloc, x2val, 2, dim3, 1, 1, yval)
+
+    end subroutine linearinterp2_vec
+    ! ---------------------------------------------------------------------------------------!
+    ! ---------------------------------------------------------------------------------------!
+
+    ! Subroutine for interpolating in one dimension given the points on the grid that bound the value for
+    ! evaluation
+    subroutine linearinterpfromlocations_vec(xgrid, ygrid, xlowerloc, xval, length, dim, extrapbot, extraptop, yval)
+    implicit none
+    integer, intent (in) :: length
+    integer, intent (in) :: dim
+    real (kind=rk), intent (in) :: xgrid(length)
+    real (kind=rk), intent (in) :: ygrid(length,dim)
+    integer, intent (in) :: xlowerloc
+    real (kind=rk), intent (in) :: xval
+    integer, intent (in) :: extrapbot
+    integer, intent (in) :: extraptop
+    real (kind=rk), intent (out) :: yval(dim)
+
+
+    ! For programme
+    real (kind=rk) xgridmin
+    real (kind=rk) xgridmax
+    real (kind=rk) xgriddiffinv
+    real (kind=rk) weightmin
+    real (kind=rk) weightmax
+    real (kind=rk) extrapslope(dim)
+    integer :: xupperloc
+
+    ! First, and easiest, get the interpolated value if xval is interior to the grid
+    if (xlowerloc.ne.0 .and. xlowerloc.ne.length) then
+        xupperloc = xlowerloc + 1
+        !if (ygrid(xupperloc,:) == ygrid(xlowerloc,:)) then
+        !    yval = ygrid(xlowerloc,:)
+        !    return
+        !end if
+        xgridmin = xgrid(xlowerloc)
+        xgridmax = xgrid(xupperloc)
+        xgriddiffinv = 1/(xgridmax-xgridmin)
+
+        weightmax = (xval-xgridmin)*xgriddiffinv
+        weightmin = (xgridmax-xval)*xgriddiffinv
+
+        ! Calculating the interpolated function values
+        yval = weightmin*ygrid(xlowerloc,:) + weightmax*ygrid(xupperloc,:)
+    else if (xlowerloc.eq.0) then
+        if (extrapbot.eq.0) then
+            yval = ygrid(1,:)
+        else
+            extrapslope = (ygrid(2,:)-ygrid(1,:))/(xgrid(2)-xgrid(1))
+            yval = ygrid(1,:) + extrapslope*(xval-xgrid(1))
+        end if
+
+    else ! a is hu-eg so we extrapolate
+        if (extraptop.eq.0) then
+            yval = ygrid(length,:)
+        else
+            extrapslope = (ygrid(length,:)-ygrid(length-1,:))/(xgrid(length)-xgrid(length-1))
+            yval = ygrid(length,:) + extrapslope*(xval-xgrid(length))
+        end if
+    end if
+
+
+    end subroutine linearinterpfromlocations_vec   
+    
     end module routines_generic

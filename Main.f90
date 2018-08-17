@@ -23,7 +23,7 @@
     include 'mpif.h'
 #endif        
 
-!#include "../globalMacros.txt"
+    !#include "../globalMacros.txt"
 #include "globalMacros.txt"
 
     ! Variables
@@ -119,12 +119,19 @@
     params%tol = 1e-10
     params%minCons = 1e-5
 
-    params%nu = 0.290307522834662 !0.8 !0.5   !0.290307522834662 ! 0.287177078339264!
-    params%beta = 0.985451393874388 ! 0.999 !0.999 !0.985451393874388 !0.985724939013559!
-    params%gamma = 2.34092202506161!1.0 !2.34092202506161! 2.31567939133319!
-    params%db(1) = 0.596815295617949 !0.796815!0.596815!0.596815295617949 ! 0.590379716068728!
-    params%db(2) =  -4.270610627570502E-006!4.270610627570502E-005!-4.270610627570502E-007!-4.270610627570502E-006 !-4.224559772943942E-006 !
-    params%thetab =  2.894599354187538E-002 !2.926152647601828E-001!2.926152647601828E-002 !2.894599354187538E-002 !
+    !params%nu = 0.290307522834662 !0.8 !0.5   !0.290307522834662 ! 0.287177078339264!
+    !params%beta = 0.985451393874388 ! 0.999 !0.999 !0.985451393874388 !0.985724939013559!
+    !params%gamma = 2.34092202506161!1.0 !2.34092202506161! 2.31567939133319!
+    !params%db(1) = 0.596815295617949 !0.796815!0.596815!0.596815295617949 ! 0.590379716068728!
+    !params%db(2) =  -4.270610627570502E-006!4.270610627570502E-005!-4.270610627570502E-007!-4.270610627570502E-006 !-4.224559772943942E-006 !
+    !params%thetab =  2.894599354187538E-002 !2.926152647601828E-001!2.926152647601828E-002 !2.894599354187538E-002 !
+    !params%k=650000
+    params%nu =   0.287177126203365 ! 0.290307522834662 ! 0.287177078339264!
+    params%beta = 0.985724876594556 ! 0.985451393874388 !0.985724939013559!
+    params%gamma =  2.31567977728987 ! 2.34092202506161! 2.31567939133319!
+    params%db(1) =  0.590379814467926 !0.596815295617949 ! 0.590379716068728!
+    params%db(2) = -4.224560477055699E-006! -4.270610627570502E-006 !-4.224559772943942E-006 !
+    params%thetab =  2.894599836633410E-002! 2.926152647601828E-002 !2.894599354187538E-002 !
     params%k=650000
 
     params%lambda= 1.0!100! 0.001! 0.001!100.0!1.0 !1000000 !0.001!0.0000001!
@@ -141,11 +148,11 @@
         do typeSim = 1, numPointsType
             call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
         end do
- 
+
         open (unit = 1001,file='..\\..\\moments\\moments.txt', action='read', IOSTAT = ios)
         open (unit = 1002,file='..\\..\\moments\\assetmom.txt', action='read', IOSTAT = ios)
         open (unit = 1003,file='..\\..\\moments\\Weight.txt', action='read', IOSTAT = ios)
-        open (unit = 1004,file='..\\..\\moments\\weightAsset.txt', action='read', IOSTAT = ios) 
+        open (unit = 1004,file='..\\..\\moments\\weightAsset.txt', action='read', IOSTAT = ios)
         read (1001, *) moments(1,:)
         read (1002, *) moments(2,:)
         read (1003, *) weights(1,:)
@@ -153,28 +160,28 @@
         close (unit=1001)
         close (unit=1002)
         close (unit=1003)
-        close (unit=1004)      
+        close (unit=1004)
         p(1,1)=   0.287177126203365 !0.287177126203365 ! 0.290307522834662 ! 0.287177078339264!
         p(1,2) =  0.985724876594556     ! 0.985724876594556 ! 0.985451393874388 !0.985724939013559!
         p(1,3) =   2.31567977728987  !2.31567977728987 ! 2.34092202506161! 2.31567939133319!
         p(1,4) =   0.590379814467926  !0.590379814467926 !0.596815295617949 ! 0.590379716068728!
         p(1,5) = -4.224560477055699E-006 !-4.224560477055699E-006! -4.270610627570502E-006 !-4.224559772943942E-006 !
-        p(1,6) =  2.894599836633410E-002 !2.894599836633410E-002! 2.926152647601828E-002 !2.894599354187538E-002 !        
+        p(1,6) =  2.894599836633410E-002 !2.894599836633410E-002! 2.926152647601828E-002 !2.894599354187538E-002 !
         write (*,*), gmm_criteria(p(1,:))
-       
+
     else if (action .EQ. 1) then
-        params%nu =   0.287177126203365 ! 0.290307522834662 ! 0.287177078339264!
-        params%beta = 0.985724876594556 ! 0.985451393874388 !0.985724939013559!
-        params%gamma =  2.31567977728987 ! 2.34092202506161! 2.31567939133319!
-        params%db(1) =  0.590379814467926 !0.596815295617949 ! 0.590379716068728!
-        params%db(2) = -4.224560477055699E-006! -4.270610627570502E-006 !-4.224559772943942E-006 !
-        params%thetab =  2.894599836633410E-002! 2.926152647601828E-002 !2.894599354187538E-002 !
-        params%k=650000   
-    
+        params%nu =   0.287177126203365 !0.866530785705649 ! 0.290307522834662 ! 0.287177078339264!
+        params%beta =  0.985724876594556 !0.990655741245757 ! 0.985451393874388 !0.985724939013559!
+        params%gamma =  2.31567977728987 !1.78141736803550  ! 2.34092202506161! 2.31567939133319!
+        params%db(1) =  0.596815295617949 !0.590379814467926 ! 0.590379716068728!
+        params%db(2) = -4.224560477055699E-006!-1.274722676211178E-005!  -4.270610627570502E-006 !-4.224559772943942E-006 !
+        params%thetab =  2.894599836633410E-002!8.734191576465597E-002!  2.926152647601828E-002 !2.894599354187538E-002 !
+        params%k=650000  
+
         do typeSim = 1, numPointsType
             call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
         end do
-        
+
         call solveValueFunction( params, grids, modelObjects, .TRUE. )
         !simulate
         if (rank == 0) then
@@ -186,7 +193,7 @@
             !call writetofileByType(grids,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
         end if
     else
-        if (Tretire+startAge .NE. 60) then
+        if (Tretire+startAge .NE. 61) then
             write (*,*) "Only estimate with SPA = 60"
         end if
 #ifdef win
@@ -243,9 +250,9 @@
         call solveValueFunction( params, grids, modelObjects, .FALSE. )
 
         if (rank==0) then
-            !call simWithUncer(params, grids, modelObjects, grids%Simy, cpath, apath, vpath, lpath, ypath ,AIME)
-            !call writetofile(grids,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
-            !call writetofileByType(grids,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
+            call simWithUncer(params, grids, modelObjects, grids%Simy, cpath, apath, vpath, lpath, ypath ,AIME)
+            call writetofile(grids,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
+            call writetofileByType(grids,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
         end if
 #ifdef mpi 
         call mpi_barrier(mpi_comm_world, ierror)

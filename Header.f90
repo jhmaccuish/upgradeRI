@@ -6,7 +6,7 @@
     integer, parameter :: rk = selected_real_kind(15)
 
     integer, parameter :: numPointsType = TYPES_SIZE !1!
-    integer, parameter :: numPointsA = 50!28!16 !15 !30 !20 !45
+    integer, parameter :: numPointsA = 10!30!28!16 !15 !30 !20 !45
   
     integer, parameter :: numPointsProd = PROD_SIZE !5!10 !
     integer, parameter :: numPointsY = 2*numPointsProd !20
@@ -17,13 +17,13 @@
     integer, parameter :: startAge =  52 !20!
     integer, parameter :: endAge = 105
     integer, parameter :: Tperiods = endAge -startAge
-    integer, parameter :: Tretire =60 -startAge
-    integer, parameter :: TrueSPA = 1!11!60 -startAge
+    integer, parameter :: Tretire =60 -startAge +1
+    integer, parameter :: TrueSPA = 1 !60 -startAge
     integer, parameter :: TendRI = 1!Tretire +  numPointsSPA - 1!1!
     integer, parameter :: normBnd = 4
     integer, parameter :: dimEstimation = 6
-    integer, parameter :: spouseretire = 65 -startAge
-    integer, parameter :: stopwrok = 80 -startAge
+    integer, parameter :: spouseretire = 65 -startAge+1
+    integer, parameter :: stopwrok = 80 -startAge+1
 
     !Holds the structural parameters that will eventually be estimated (at least in some cases)
     type structparamstype
@@ -72,9 +72,9 @@
 
     !Made allocatable to allow for very large arrays
     type modelObjectsType
-        real (kind=rk), allocatable :: V(:, :,:, :, :,:)
-        real (kind=rk), allocatable :: policy(:, :, :, :, :, :,:,:)
-        real (kind=rk), allocatable :: EV(:, :, :, :, :,:)
+        real (kind=rk), allocatable :: V(:, :, :,:)
+        real (kind=rk), allocatable :: policy( :, :, :, :,:,:)
+        real (kind=rk), allocatable :: EV( :, :, :,:)
     end type modelObjectsType
 
     !! For mpi
