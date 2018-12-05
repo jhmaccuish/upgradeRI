@@ -1,13 +1,14 @@
     module Header
-    
-!#include "../globalMacros.txt"
+
+    !#include "../globalMacros.txt"
 #include "globalMacros.txt"
 
     integer, parameter :: rk = selected_real_kind(15)
+    integer, parameter :: hp = selected_real_kind(20)
 
     integer, parameter :: numPointsType = TYPES_SIZE !1!
-    integer, parameter :: numPointsA = 10!30!28!16 !15 !30 !20 !45
-  
+    integer, parameter :: numPointsA = 10!30!100!50!10!
+    
     integer, parameter :: numPointsProd = PROD_SIZE !5!10 !
     integer, parameter :: numPointsY = 2*numPointsProd !20
     integer, parameter :: numAIME = 8!numPointsA  !10 !5
@@ -18,13 +19,21 @@
     integer, parameter :: endAge = 105
     integer, parameter :: Tperiods = endAge -startAge
     integer, parameter :: Tretire =60 -startAge +1
-    integer, parameter :: TrueSPA = 1 !60 -startAge
-    integer, parameter :: TendRI = 1!Tretire +  numPointsSPA - 1!1!
+    integer, parameter :: TrueSPA = 1
+    integer, parameter :: TendRI = Tretire +  numPointsSPA - 1!CHANGE THIS ONE FOR RE
     integer, parameter :: normBnd = 4
     integer, parameter :: dimEstimation = 6
     integer, parameter :: spouseretire = 65 -startAge+1
     integer, parameter :: stopwrok = 80 -startAge+1
-
+    integer :: modelChoice
+    logical, parameter :: counterFact = .TRUE.
+    integer, protected :: EndPeriodRI
+    logical, protected :: uncerRE
+    character(len=250), protected :: path
+    character(len=250), protected :: pathDataStore
+    character(len=250), protected :: pathPol
+    character(len=250), parameter :: pathMoments = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\moments\'
+    character(len=250), parameter :: pathErrors = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\'
     !Holds the structural parameters that will eventually be estimated (at least in some cases)
     type structparamstype
         !Personal
@@ -48,6 +57,7 @@
         real (kind=rk) :: tol
         real (kind=rk) :: p
         real (kind=rk) :: lambda
+        real (kind=rk) :: percentCons
     end type structparamstype
 
     type gridsType
@@ -71,11 +81,27 @@
     end type gridsType
 
     !Made allocatable to allow for very large arrays
+    !type modelObjectsType
+    !    real (kind=rk):: V(numPointsA, numAIME, numPointsSPA,numPointsY)
+    !    real (kind=rk) :: policy(numPointsA, numAIME, numPointsSPA, numPointsY,numPointsL,numPointsA)
+    !    real (kind=rk) :: EV(numPointsA, numAIME, numPointsSPA,numPointsY)
+    !end type modelObjectsType
+
+    !type locmodelObjectsType
+    !    real (kind=rk):: V(numPointsA, numAIME, numPointsSPA,numPointsY/2)
+    !    real (kind=rk) :: policy(numPointsA, numAIME, numPointsSPA, numPointsY/2,numPointsL,numPointsA)
+    !    real (kind=rk) :: EV(numPointsA, numAIME, numPointsSPA,numPointsY/2)
+    !end type locmodelObjectsType
+
     type modelObjectsType
         real (kind=rk), allocatable :: V(:, :, :,:)
-        real (kind=rk), allocatable :: policy( :, :, :, :,:,:)
-        real (kind=rk), allocatable :: EV( :, :, :,:)
+        real (kind=rk), allocatable :: policy(:, :, :, :,:,:)
+        real (kind=rk), allocatable :: EV(:, :, :,:)
     end type modelObjectsType
+
+    !allocate(modelObjects%EV(numPointsA, numAIME, numPointsSPA,numPointsY))
+    !allocate(modelObjects%policy(numPointsA, numAIME, numPointsSPA, numPointsY,numPointsL,numPointsA))
+    !allocate(modelObjects%V(numPointsA, numAIME, numPointsSPA,numPointsY))
 
     !! For mpi
     integer :: rank, ierror, procsize
@@ -83,6 +109,49 @@
 
     !! Test controls
     logical, parameter :: fullLifeCycle = .FALSE.
-    logical, parameter :: intermediateToFile = .FALSE.
+    !logical, parameter :: intermediateToFile = .FALSE.
+
+    contains
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!Subroutine to set 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
+    subroutine setModel
+    implicit none
+
+#ifdef mpi
+    include 'mpif.h'
+#endif 
+
+    if (rank == 0) then
+        write (*,*) "Press 1 for RE non uncert SPA, 2 for RE+uncert SPA, 3 for RI"
+
+        read (*,*) modelChoice
+    end if
+#ifdef mpi
+    call MPI_Bcast( modelChoice, 1, MPI_INTEGER ,0, mpi_comm_world, ierror)
+    if (ierror.ne.0) stop 'mpi problem171'
+#endif 
+
+    select case(modelChoice)
+    case(1)
+        EndPeriodRI = 1
+        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\outBaseline\"
+        pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncsBaseline\"
+        pathPol = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\tempBaseline\"
+    case(2)
+        EndPeriodRI = TendRI
+        uncerRE = .TRUE.
+        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\outRE\"
+        pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncsRE\"
+        pathPol = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\tempRE\"
+    case default
+        EndPeriodRI = TendRI
+        uncerRE = .FALSE.
+        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\out\"
+        pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncs\"
+        pathPol = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\temp\"
+    end select
+
+    end subroutine
 
     end module Header

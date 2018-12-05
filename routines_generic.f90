@@ -4,9 +4,13 @@
     module routines_generic
     !use precisions
     use Header
-!#include "../globalMacros.txt"
+    !#include "../globalMacros.txt"
 #include "globalMacros.txt"
-    
+    interface entropy
+    module procedure entropyRK
+    module procedure entropyHP
+    end interface entropy
+
     contains
     subroutine linearinterp1(xgrid, ygrid, length, xval, yval, extrapbot, extraptop)
     ! Subroutine for linear interpolation
@@ -1926,19 +1930,19 @@
             RETURN
         end if
         if (iter >= ITMAX) then
-            !write(*,*),  'ERROR: ITMAX exceeded in amoeba' 
+            !write(*,*),  'ERROR: ITMAX exceeded in amoeba'
             call swap_scalar(y(1),y(ilo))
             call swap_vector(p(1,:),p(ilo,:))
             return
-        end if 
-        ytry=amotry(-1.0D0)
+        end if
+        ytry=amotry(-1.0E0_rk)
         iter=iter+1
         if (ytry <= y(ilo)) then
-            ytry=amotry(2.0D0)
+            ytry=amotry(2.0E0_rk)
             iter=iter+1
         else if (ytry >= y(inhi)) then
             ysave=y(ihi)
-            ytry=amotry(0.5D0)
+            ytry=amotry(0.5E0_rk)
             iter=iter+1
             if (ytry >= ysave) then
                 p(:,:)=0.5D0*(p(:,:)+spread(p(ilo,:),1,size(p,1)))
@@ -2277,13 +2281,237 @@
     END DO
     RETURN
     END SUBROUTINE LUDCMP
+
+    ! ---------------------------------------------------------------------------------------!
+    ! Globally convergent Newton-Raphson
+    ! ---------------------------------------------------------------------------------------!
+    !Given an initial guess x(1:n) for a root in n dimensions, find the root by a globally
+    !convergent Newton’s method. The vector of functions to be zeroed, called fvec(1:n)
+    !in the routine below, is returned by a user-supplied subroutine that must be called funcv
+    !and have the declaration subroutine funcv(n,x,fvec). The output quantity check
+    !is false on a normal return and true if the routine has converged to a local minimum of the
+    !function fmin defined below. In this case try restarting from a different initial guess.
+    !Parameters: NP is the maximum expected value of n; MAXITS is the maximum number of
+    !iterations; TOLF sets the convergence criterion on function values; TOLMIN sets the criterion
+    !for deciding whether spurious convergence to a minimum of fmin has occurred; TOLX is
+    !the convergence criterion on delta-x; STPMX is the scaled maximum step length allowed in line
+    !searches.
+    ! ---------------------------------------------------------------------------------------!
+    SUBROUTINE newt(funcv,fdjac,x,tolf,check,error)
+    IMPLICIT NONE
+
+
+    !Changing
+    REAL(kind=rk), DIMENSION(:), INTENT(INOUT) :: x
+
+    !Input
+    REAL(kind=rk), INTENT(IN) :: tolf
+
+    !Output
+    REAL(kind=rk), OPTIONAL, INTENT(OUT) :: error
+    LOGICAL, INTENT(OUT) :: check
+
+    !Local
+    INTEGER, PARAMETER :: MAXITS=500
+    REAL(kind=rk), PARAMETER :: TOLX=epsilon(x),STPMX=100.0
+    REAL(kind=rk) :: tolmin
+    INTEGER :: its
+    INTEGER, DIMENSION(size(x)) :: indx
+    REAL(kind=rk) :: d,f,fold,stpmax
+    REAL(kind=rk), DIMENSION(size(x)) :: g,p,xold
+    REAL(kind=rk), DIMENSION(size(x)), TARGET :: fvec
+    REAL(kind=rk), DIMENSION(size(x),size(x)) :: fjac
+
+    !Interfaces
+    INTERFACE
+    FUNCTION funcv(x)
+    USE header
+    IMPLICIT NONE
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
+    REAL(kind=rk), DIMENSION(size(x)) :: funcv
+    END FUNCTION funcv
+    END INTERFACE
+
+    !Interface
+    INTERFACE
+    FUNCTION fdjac(x)
+    USE header
+    IMPLICIT NONE
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
+    REAL(kind=rk), DIMENSION(size(x),size(x)) :: fdjac
+    END FUNCTION fdjac
+    END INTERFACE
+
+    tolmin = tolf*1.e-2_rk
+    f=fmin(funcv,fvec,x)
+    !print *, 'fvec/tolf', fvec, tolf, x
+    !if (maxval(abs(fvec(:))) < 0.01_dp*tolf) then
+    error = maxval(abs(fvec(:)))
+    if (error < tolf) then
+        check=.false.
+        RETURN
+    end if
+    stpmax=STPMX*max(vabs(x(:)),real(size(x),rk))
+    do its=1,MAXITS
+        fjac = fdjac(x)
+        g(:)=matmul(fvec(:),fjac(:,:))
+        xold(:)=x(:)
+        fold=f
+        p(:)=-fvec(:)
+        call ludcmp(fjac,indx,d)
+        call lubksb(fjac,indx,p)
+        call lnsrch(funcv,xold,fold,g,p,x,f,stpmax,check,fmin,fvec)
+        error = maxval(abs(fvec(:)))
+        if (error < tolf) then
+            check=.false.
+            RETURN
+        end if
+        if (check) then
+            check=(maxval(abs(g(:))*max(abs(x(:)),1.0_rk) / &
+                max(f,0.5_rk*size(x))) < tolmin)
+            RETURN
+        end if
+        if (maxval(abs(x(:)-xold(:))/max(abs(x(:)),1.0_rk)) < TOLX) &
+            RETURN
+    end do
+    print *, 'newt values'
+    print *, x, xold, fvec, f, fold, tolf, fjac, g, stpmax
+    write(*,*) 'MAXITS exceeded in newt'
+    END SUBROUTINE newt
+    ! ---------------------------------------------------------------------------------------!
+    !linear searhc
+    ! ---------------------------------------------------------------------------------------!
+    SUBROUTINE lnsrch(funcv,xold,fold,g,p,x,f,stpmax,check,func,fvec)
+    !USE nrtype; USE nrutil, ONLY : assert_eq,nrerror,vabs
+    IMPLICIT NONE
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: xold,g
+    REAL(kind=rk), DIMENSION(:), INTENT(INOUT) :: p
+    REAL(kind=rk), INTENT(IN) :: fold,stpmax
+    REAL(kind=rk), DIMENSION(:), INTENT(OUT) :: x
+    REAL(kind=rk), DIMENSION(:), INTENT(OUT) :: fvec
+    REAL(kind=rk), INTENT(OUT) :: f
+    LOGICAL, INTENT(OUT) :: check
+    INTERFACE
+    FUNCTION funcv(x)
+    USE Header
+    IMPLICIT NONE
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
+    REAL(kind=rk), DIMENSION(size(x)) :: funcv
+    END FUNCTION funcv
+    END INTERFACE
+    INTERFACE
+    FUNCTION func(funcv,fvec,x)
+    USE Header
+    IMPLICIT NONE
+    REAL(kind=rk) :: func
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
+    REAL(kind=rk), DIMENSION(size(x)), INTENT(OUT) :: fvec
+    INTERFACE
+    FUNCTION funcv(x)
+    USE Header
+    IMPLICIT NONE
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
+    REAL(kind=rk), DIMENSION(size(x)) :: funcv
+    END FUNCTION funcv
+    END INTERFACE
+    END FUNCTION func
+    END INTERFACE
+    REAL(kind=rk), PARAMETER :: ALF=1.0e-04_rk,TOLX=epsilon(x)
+    INTEGER :: ndum
+    REAL(kind=rk) :: a,alam,alam2,alamin,b,disc,f2,pabs,rhs1,rhs2,slope,tmplam
+    !ndum=assert_eq(size(g),size(p),size(x),size(xold),'lnsrch')
+    if (size(g) == size(p) .and. size(p) == size(x) .and. size(x) == size(xold)) then
+        ndum = size(g)
+    else
+        write(*,*) "Assert equal error lnsrch"
+    end if
+    check=.false.
+    pabs=vabs(p(:))
+    if (pabs > stpmax) p(:)=p(:)*stpmax/pabs
+    slope=dot_product(g,p)
+    if (slope >= 0.0) then
+        print *, g, p, stpmax, pabs, fold, xold
+        write(*,*) 'roundoff problem in lnsrch'
+    endif
+    alamin=TOLX/maxval(abs(p(:))/max(abs(xold(:)),1.0_rk))
+    alam=1.0
+    do
+        x(:)=xold(:)+alam*p(:)
+        f=func(funcv,fvec,x)
+        if (alam < alamin) then
+            x(:)=xold(:)
+            check=.true.
+            RETURN
+        else if (f <= fold+ALF*alam*slope) then
+            RETURN
+        else
+            if (alam == 1.0) then
+                tmplam=-slope/(2.0_rk*(f-fold-slope))
+            else
+                rhs1=f-fold-alam*slope
+                rhs2=f2-fold-alam2*slope
+                a=(rhs1/alam**2-rhs2/alam2**2)/(alam-alam2)
+                b=(-alam2*rhs1/alam**2+alam*rhs2/alam2**2)/&
+                    (alam-alam2)
+                if (a == 0.0) then
+                    tmplam=-slope/(2.0_rk*b)
+                else
+                    disc=b*b-3.0_rk*a*slope
+                    if (disc < 0.0) then
+                        tmplam=0.5_rk*alam
+                    else if (b <= 0.0) then
+                        tmplam=(-b+sqrt(disc))/(3.0_rk*a)
+                    else
+                        tmplam=-slope/(b+sqrt(disc))
+                    end if
+                end if
+                if (tmplam > 0.5_rk*alam) tmplam=0.5_rk*alam
+            end if
+        end if
+        alam2=alam
+        f2=f
+        alam=max(tmplam,0.1_rk*alam)
+    end do
+    END SUBROUTINE lnsrch
+    ! ---------------------------------------------------------------------------------------!
+    !Utilities from nrutil
+    ! ---------------------------------------------------------------------------------------!
+    !Returns f = 1/2 F · F at x. subroutine funcv(n,x,f) is a fixed-name, user-supplied
+    !routine that returns the vector of functions at x. The common block newtv communicates
+    !the function values back to newt.
+    ! ---------------------------------------------------------------------------------------!
+    FUNCTION fmin(funcv,fvec,x)
+    IMPLICIT NONE
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
+    REAL(kind=rk), DIMENSION(size(x)), INTENT(OUT) :: fvec
+    REAL(kind=rk) :: fmin
+    INTERFACE
+    FUNCTION funcv(x)
+    use Header
+    IMPLICIT NONE
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
+    REAL(kind=rk), DIMENSION(size(x)) :: funcv
+    END FUNCTION funcv
+    END INTERFACE
+    fvec=funcv(x)
+    fmin=0.5_rk*dot_product(fvec,fvec)
+    END FUNCTION fmin
+    FUNCTION vabs(v)
+    implicit none
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: v
+    REAL(kind=rk) :: vabs
+    vabs=sqrt(dot_product(v,v))
+    END FUNCTION vabs
+    ! ---------------------------------------------------------------------------------------!
+    !Factorial subroutine
+    ! ---------------------------------------------------------------------------------------!
     function factorial (num) result (res)
 
     implicit none
     integer, intent (in) :: num
     real(KIND=rk) :: res
     integer :: i
-    
+
     !Why doesn't this work?
     !res = product ((/(i, i = 1, num)/))
     res=1
@@ -2292,9 +2520,7 @@
             res=res*i
         end do
     end if
-    
     end function factorial
-
     function choose (n, k) result (res)
 
     implicit none
@@ -2305,7 +2531,7 @@
     res = factorial (n) / (factorial (k) * factorial (n - k))
 
     end function choose
-     ! ---------------------------------------------------------------------------------------!
+    ! ---------------------------------------------------------------------------------------!
     ! ---------------------------------------------------------------------------------------!
     ! Extrapolation is by default here. There is no option to use the bottom value (as I have
     ! in the one-dimensional linear interpolation).
@@ -2458,6 +2684,40 @@
     end if
 
 
-    end subroutine linearinterpfromlocations_vec   
-    
+    end subroutine linearinterpfromlocations_vec
+
+    pure function entropyRK(p) result(h)
+    implicit none
+
+    real (kind=rk), intent(in) :: p(:)
+    real (kind=hp) :: h
+    real (kind=hp), allocatable :: ploc(:)
+
+    allocate(ploc(size(p)))
+    ploc = pack(p, p>0.0)
+
+    ploc = pack(p, p>0.0)
+    if (size(ploc) > 0) then
+        h = -dot_product(ploc,log(ploc))/log(2.0)
+    else
+        h = 0.0
+    end if
+
+    end function
+    pure function entropyHP(p) result(h)
+    implicit none
+
+    real (kind=HP), intent(in) :: p(:)
+    real (kind=hp) :: h
+    real (kind=hp), allocatable :: ploc(:)
+
+    allocate(ploc(size(p)))
+    ploc = pack(p, p>0.0)
+    if (size(ploc) > 0) then
+        h = -dot_product(ploc,log(ploc))/log(2.0)
+    else
+        h = 0.0
+    end if
+
+    end function
     end module routines_generic
