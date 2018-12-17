@@ -7,7 +7,7 @@
     integer, parameter :: hp = selected_real_kind(20)
 
     integer, parameter :: numPointsType = TYPES_SIZE !1!
-    integer, parameter :: numPointsA = 10!30!100!50!10!
+    integer, parameter :: numPointsA = 30!100!50!10!
     
     integer, parameter :: numPointsProd = PROD_SIZE !5!10 !
     integer, parameter :: numPointsY = 2*numPointsProd !20
@@ -26,12 +26,9 @@
     integer, parameter :: spouseretire = 65 -startAge+1
     integer, parameter :: stopwrok = 80 -startAge+1
     integer :: modelChoice
-    logical, parameter :: counterFact = .TRUE.
     integer, protected :: EndPeriodRI
     logical, protected :: uncerRE
-    character(len=250), protected :: path
-    character(len=250), protected :: pathDataStore
-    character(len=250), protected :: pathPol
+    logical, parameter :: counterFact = .TRUE.
     character(len=250), parameter :: pathMoments = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\moments\'
     character(len=250), parameter :: pathErrors = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\'
     !Holds the structural parameters that will eventually be estimated (at least in some cases)
@@ -112,9 +109,6 @@
     !logical, parameter :: intermediateToFile = .FALSE.
 
     contains
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!Subroutine to set 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    
     subroutine setModel
     implicit none
 
@@ -130,26 +124,16 @@
 #ifdef mpi
     call MPI_Bcast( modelChoice, 1, MPI_INTEGER ,0, mpi_comm_world, ierror)
     if (ierror.ne.0) stop 'mpi problem171'
-#endif 
-
+#endif     
     select case(modelChoice)
     case(1)
         EndPeriodRI = 1
-        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\outBaseline\"
-        pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncsBaseline\"
-        pathPol = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\tempBaseline\"
     case(2)
         EndPeriodRI = TendRI
         uncerRE = .TRUE.
-        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\outRE\"
-        pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncsRE\"
-        pathPol = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\tempRE\"
-    case default
+        case default
         EndPeriodRI = TendRI
         uncerRE = .FALSE.
-        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\out\"
-        pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncs\"
-        pathPol = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\temp\"
     end select
 
     end subroutine

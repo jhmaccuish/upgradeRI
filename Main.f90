@@ -234,7 +234,7 @@
 
         call initialGuess(rank,params,grids,moments,weights,p,y)
 
-        if (rank==0) open (unit=211, file=path // '\guess2.txt', status='unknown', action='write')
+        if (rank==0) open (unit=211, file='..\\out\guess2.txt', status='unknown', action='write')
         call amoeba(p,y, 0.001_rk,gmm_criteria,iter,.TRUE.,0.0_rk) !0.0001_rk !0.001_rk!0.07_rk!0.0001054 !0.000000001_rk !
         if (rank==0) close (unit=211)
 
@@ -243,7 +243,7 @@
             print '("Y = ",f16.3)',Y
 #ifdef win
             inquire (iolength=requiredl)  P(1,:)
-            open (unit=201, file=path // '\params.txt', status='unknown',recl=requiredl, action='write')
+            open (unit=201, file='..\\out\params.txt', status='unknown',recl=requiredl, action='write')
             write (201, * ) P(1,:)
 #else
             !inquire (iolength=requiredl)  P
@@ -314,3 +314,4 @@
     end function
 
     end program Console1
+
