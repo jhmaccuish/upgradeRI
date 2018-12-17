@@ -186,7 +186,7 @@
             delCache = .FALSE.
             if (modelChoice>1) then
                 if (counterFact) then
-                    call simWithUncer(params, grids, grids%Simy, cpath, apath, vpath, lpath, ypath, AIME, 5, .TRUE. )
+                    call simWithUncer(params, grids, grids%Simy, cpath, apath, vpath, lpath, ypath, AIME, 1, .TRUE. ) !5
                     call writetofile(grids,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
                     call writetofileByType(grids,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
                 else
