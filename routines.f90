@@ -449,125 +449,125 @@
                 write (201)  modelObjects%EV
                 close( unit=201)
 
-                !if (ixt < stopwrok .AND. intermediateToFile) then
-                !    write (format_numpeepcols_int,*),'(',numPointsY
-                !    format_numpeepcols_int = trim(format_numpeepcols_int) // 'E20.7E4)'
-                !    select case(modelChoice)
-                !    case(1)
-                !        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\tempBaseline\"
-                !    case(2)
-                !        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\tempRE\"
-                !        case default
-                !        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\temp\"
-                !    end select
-                !
-                !    EVPath(ixt) = sum(modelObjects%EV(:,:, 11,:))
-                !
-                !    do spa = 1, numPointsSPA
-                !        !Policy L
-                !        poilcyL1 = sum(modelObjects%policy(:,4, spa,:,2,:),3)
-                !        write (outFile, *), trim(trim(path) // "policyL"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
-                !        outfile=ADJUSTL(outfile)
-                !        inquire (iolength=requiredl)  transpose(poilcyL1)
-                !        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                !        write (201,format_numpeepcols_int)  transpose(poilcyL1)
-                !        close( unit=201)
-                !
-                !        !Policy A
-                !        do i =1, numpointsA !grids%Agrid(typesim,1,:))
-                !            do j=1,numpointsY
-                !                poilcyA1(i,j) = dot_product(sum(modelObjects%policy(i,4, spa,j,:,:),1),grids%Agrid(typesim,1,:))
-                !                if (poilcyL1(i,j) > 0) then
-                !                    poilcyA1wrk(i,j) = dot_product(modelObjects%policy(i,4, spa,j,2,:)/poilcyL1(i,j),grids%Agrid(typesim,1,:))
-                !                else
-                !                    poilcyA1wrk(i,j) = 0.0
-                !                end if
-                !                if (poilcyL1(i,j) <1) then
-                !                    poilcyA1dnt(i,j) = dot_product(modelObjects%policy(i,4, spa,j,1,:)/(1-poilcyL1(i,j)),grids%Agrid(typesim,1,:))
-                !                else
-                !                    poilcyA1dnt(i,j) = 0.0
-                !                end if
-                !                if (abs(poilcyA1(i,j) - ((1-poilcyL1(i,j))*poilcyA1dnt(i,j)+poilcyL1(i,j)*poilcyA1wrk(i,j)))>1.0) then
-                !                    write (*,*) "Prob error"
-                !                    stop
-                !                end if
-                !            end do
-                !        end do
-                !        write (outFile, *), trim(trim(path) // "policyA"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
-                !        outfile=ADJUSTL(outfile)
-                !        inquire (iolength=requiredl)  transpose(poilcyA1)
-                !        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                !        write (201,format_numpeepcols_int)  transpose(poilcyA1)
-                !        close( unit=201)
-                !
-                !        write (outFile, *), trim(trim(path) // "policyAwrk"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
-                !        outfile=ADJUSTL(outfile)
-                !        inquire (iolength=requiredl)  transpose(poilcyA1wrk)
-                !        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                !        write (201,format_numpeepcols_int)  transpose(poilcyA1wrk)
-                !        close( unit=201)
-                !
-                !        write (outFile, *), trim(trim(path) // "policyAdnt"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
-                !        outfile=ADJUSTL(outfile)
-                !        inquire (iolength=requiredl)  transpose(poilcyA1dnt)
-                !        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                !        write (201,format_numpeepcols_int)  transpose(poilcyA1dnt)
-                !        close( unit=201)
-                !
-                !        !Value
-                !        val1 = modelObjects%v(:,4, spa,:)
-                !        write (outFile, *), trim(trim(path) // "Val"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
-                !        outfile=ADJUSTL(outfile)
-                !        inquire (iolength=requiredl)  transpose(val1 )
-                !        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                !        write (201,format_numpeepcols_int)  transpose(val1 )
-                !        close( unit=201)
-                !
-                !        !Value
-                !        !val1 = modelObjects%ev(:,4, spa,:)
-                !        !write (outFile, *), trim(trim(path) // "EVal"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
-                !        !outfile=ADJUSTL(outfile)
-                !        !inquire (iolength=requiredl)  transpose(val1 )
-                !        !open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                !        !write (201,format_numpeepcols_int)  transpose(val1 )
-                !        !close( unit=201)                        
-                !        
-                !        
-                !        if ( modelChoice==3 .AND. ixt <TendRI-1) then
-                !            FORALL(I = 1:numpointsA, J = 1:numpointsY) signal(spa,i,j) =  entropy(real(reshape(modelObjects%policy(i,4, spa,j,:,:),(/numpointsA*numPointsL/)),hp))
-                !            FORALL(I = 1:numpointsA, J = 1:numpointsY) totalP(i,j,:) = totalP(i,j,:) + grids%posteriorSPA(ixt,spa)*reshape(modelObjects%policy(i,4, spa,j,:,:),(/numpointsA*numPointsL/))
-                !
-                !            if (ixt==8 ) then
-                !
-                !                write (outFile, *), trim("C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\Entropy\Pol"),trim("SPA"),Tretire+startAge-2+spa,".txt"
-                !                outfile=ADJUSTL(outfile)
-                !                inquire (iolength=requiredl)  modelObjects%policy(5,4, spa,5,:,:)
-                !                open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                !                write (201,*)  modelObjects%policy(5,4, spa,5,:,:)
-                !                close( unit=201)
-                !
-                !            end if
-                !        end if
-                !    end do
-                !end if
-                !if ( modelChoice==3 .AND. ixt <TendRI-1 .AND. intermediateToFile) then
-                !    FORALL(I = 1:numpointsA, J = 1:numpointsY)  mutualInfo(i,j) = entropy( totalP(i,j,:)) - dot_product(grids%posteriorSPA(ixt,:),signal(:,i,j))
-                !    if (minval(mutualInfo) < -1.0E-16 ) then
-                !        testSUM(1) = sum(grids%posteriorSPA(ixt,:))
-                !        testSUM(2) = sum(modelObjects%policy(8,4, 11,1,:,:))
-                !        testSUM(3) = sum(modelObjects%policy(8,4, 10,1,:,:))
-                !        testSUM(4) = sum(modelObjects%policy(8,4, 9,1,:,:))
-                !        testSUM(5) = sum(totalP(8,1,:))
-                !        FORALL(I = 1:numpointsA, J = 1:numpointsY)  ent(i,j) = entropy( totalP(i,j,:))
-                !        write (*,*) "Neg. mutaul info!", minval(mutualInfo)
-                !    end if
-                !    write (outFile, *), trim(trim(path) // "MutualInfo"),typeSim,trim("Period"),ixt,".txt"
-                !    outfile=ADJUSTL(outfile)
-                !    inquire (iolength=requiredl)  transpose(mutualInfo )
-                !    open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                !    write (201,format_numpeepcols_int)  transpose(mutualInfo )
-                !    close( unit=201)
-                !end if
+                if (ixt < stopwrok .AND. intermediateToFile) then
+                    write (format_numpeepcols_int,*),'(',numPointsY
+                    format_numpeepcols_int = trim(format_numpeepcols_int) // 'E20.7E4)'
+                    select case(modelChoice)
+                    case(1)
+                        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\tempBaseline\"
+                    case(2)
+                        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\tempRE\"
+                        case default
+                        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\temp\"
+                    end select
+
+                    EVPath(ixt) = sum(modelObjects%EV(:,:, 11,:))
+
+                    do spa = 1, numPointsSPA
+                        !Policy L
+                        poilcyL1 = sum(modelObjects%policy(:,4, spa,:,2,:),3)
+                        write (outFile, *), trim(trim(path) // "policyL"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
+                        outfile=ADJUSTL(outfile)
+                        inquire (iolength=requiredl)  transpose(poilcyL1)
+                        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
+                        write (201,format_numpeepcols_int)  transpose(poilcyL1)
+                        close( unit=201)
+
+                        !Policy A
+                        do i =1, numpointsA !grids%Agrid(typesim,1,:))
+                            do j=1,numpointsY
+                                poilcyA1(i,j) = dot_product(sum(modelObjects%policy(i,4, spa,j,:,:),1),grids%Agrid(typesim,1,:))
+                                if (poilcyL1(i,j) > 0) then
+                                    poilcyA1wrk(i,j) = dot_product(modelObjects%policy(i,4, spa,j,2,:)/poilcyL1(i,j),grids%Agrid(typesim,1,:))
+                                else
+                                    poilcyA1wrk(i,j) = 0.0
+                                end if
+                                if (poilcyL1(i,j) <1) then
+                                    poilcyA1dnt(i,j) = dot_product(modelObjects%policy(i,4, spa,j,1,:)/(1-poilcyL1(i,j)),grids%Agrid(typesim,1,:))
+                                else
+                                    poilcyA1dnt(i,j) = 0.0
+                                end if
+                                if (abs(poilcyA1(i,j) - ((1-poilcyL1(i,j))*poilcyA1dnt(i,j)+poilcyL1(i,j)*poilcyA1wrk(i,j)))>1.0) then
+                                    write (*,*) "Prob error"
+                                    stop
+                                end if
+                            end do
+                        end do
+                        write (outFile, *), trim(trim(path) // "policyA"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
+                        outfile=ADJUSTL(outfile)
+                        inquire (iolength=requiredl)  transpose(poilcyA1)
+                        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
+                        write (201,format_numpeepcols_int)  transpose(poilcyA1)
+                        close( unit=201)
+
+                        write (outFile, *), trim(trim(path) // "policyAwrk"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
+                        outfile=ADJUSTL(outfile)
+                        inquire (iolength=requiredl)  transpose(poilcyA1wrk)
+                        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
+                        write (201,format_numpeepcols_int)  transpose(poilcyA1wrk)
+                        close( unit=201)
+
+                        write (outFile, *), trim(trim(path) // "policyAdnt"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
+                        outfile=ADJUSTL(outfile)
+                        inquire (iolength=requiredl)  transpose(poilcyA1dnt)
+                        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
+                        write (201,format_numpeepcols_int)  transpose(poilcyA1dnt)
+                        close( unit=201)
+
+                        !Value
+                        val1 = modelObjects%v(:,4, spa,:)
+                        write (outFile, *), trim(trim(path) // "Val"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
+                        outfile=ADJUSTL(outfile)
+                        inquire (iolength=requiredl)  transpose(val1 )
+                        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
+                        write (201,format_numpeepcols_int)  transpose(val1 )
+                        close( unit=201)
+
+                        !Value
+                        !val1 = modelObjects%ev(:,4, spa,:)
+                        !write (outFile, *), trim(trim(path) // "EVal"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
+                        !outfile=ADJUSTL(outfile)
+                        !inquire (iolength=requiredl)  transpose(val1 )
+                        !open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
+                        !write (201,format_numpeepcols_int)  transpose(val1 )
+                        !close( unit=201)                        
+                        
+                        
+                        if ( modelChoice==3 .AND. ixt <TendRI-1) then
+                            FORALL(I = 1:numpointsA, J = 1:numpointsY) signal(spa,i,j) =  entropy(real(reshape(modelObjects%policy(i,4, spa,j,:,:),(/numpointsA*numPointsL/)),hp))
+                            FORALL(I = 1:numpointsA, J = 1:numpointsY) totalP(i,j,:) = totalP(i,j,:) + grids%posteriorSPA(ixt,spa)*reshape(modelObjects%policy(i,4, spa,j,:,:),(/numpointsA*numPointsL/))
+
+                            if (ixt==8 ) then
+
+                                write (outFile, *), trim("C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\Entropy\Pol"),trim("SPA"),Tretire+startAge-2+spa,".txt"
+                                outfile=ADJUSTL(outfile)
+                                inquire (iolength=requiredl)  modelObjects%policy(5,4, spa,5,:,:)
+                                open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
+                                write (201,*)  modelObjects%policy(5,4, spa,5,:,:)
+                                close( unit=201)
+
+                            end if
+                        end if
+                    end do
+                end if
+                if ( modelChoice==3 .AND. ixt <TendRI-1 .AND. intermediateToFile) then
+                    FORALL(I = 1:numpointsA, J = 1:numpointsY)  mutualInfo(i,j) = entropy( totalP(i,j,:)) - dot_product(grids%posteriorSPA(ixt,:),signal(:,i,j))
+                    if (minval(mutualInfo) < -1.0E-16 ) then
+                        testSUM(1) = sum(grids%posteriorSPA(ixt,:))
+                        testSUM(2) = sum(modelObjects%policy(8,4, 11,1,:,:))
+                        testSUM(3) = sum(modelObjects%policy(8,4, 10,1,:,:))
+                        testSUM(4) = sum(modelObjects%policy(8,4, 9,1,:,:))
+                        testSUM(5) = sum(totalP(8,1,:))
+                        FORALL(I = 1:numpointsA, J = 1:numpointsY)  ent(i,j) = entropy( totalP(i,j,:))
+                        write (*,*) "Neg. mutaul info!", minval(mutualInfo)
+                    end if
+                    write (outFile, *), trim(trim(path) // "MutualInfo"),typeSim,trim("Period"),ixt,".txt"
+                    outfile=ADJUSTL(outfile)
+                    inquire (iolength=requiredl)  transpose(mutualInfo )
+                    open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
+                    write (201,format_numpeepcols_int)  transpose(mutualInfo )
+                    close( unit=201)
+                end if
             end if
 
 
@@ -1090,8 +1090,8 @@
     integer :: lrich(Tperiods,numSims/2), lpoor(Tperiods,numSims/2)
     integer :: rich, poor, k, start, finish
     integer, allocatable:: rangeSims(:)
-    character (20) :: format_numpeepcols_int, path
-    character(len=1024) :: outFile
+    character (20) :: format_numpeepcols_int 
+    character(len=1024) :: outFile, path
 
 #ifdef win 
     select case(modelChoice)
@@ -1540,8 +1540,8 @@
     integer :: lrich(Tperiods,numSims/2), lpoor(Tperiods,numSims/2)
     integer :: rich, poor, k, start, finish
     integer, allocatable:: rangeSims(:)
-    character (20) :: format_numpeepcols_int, path
-    character(len=1024) :: outFile
+    character (20) :: format_numpeepcols_int
+    character(len=1024) :: outFile, path
 
 #ifdef win 
     select case(modelChoice)
@@ -1714,7 +1714,7 @@
 
 
     end subroutine
-       ! ---------------------------------------------------------------------------------------------------------!
+    ! ---------------------------------------------------------------------------------------------------------!
     !!solve period
     !! when RI is imporant
     ! ---------------------------------------------------------------------------------------------------------!
@@ -1881,7 +1881,7 @@
 
     !Calculate continuation value
     do i=1,grids%supportSPA(ixt)
-        test= exp(GrossUtil(:,i))
+        test= GrossUtil(:,i)
         v(i) = log(sum(test))
     end do
 
@@ -1971,15 +1971,14 @@
     REAL(kind=rk), DIMENSION(size(x)) :: funcv
     funcv = x - func(x)
     END FUNCTION funcv
-    end subroutine    
-
+    end subroutine  
     
     
     ! ---------------------------------------------------------------------------------------------------------!
     !!solve period
     !! when RI is imporant
     ! ---------------------------------------------------------------------------------------------------------!
-    !subroutine solvePeriodRI(params, grids, ixy, ixA, ixAIME ,ixt,ixType,spa,  EV1, ccpOut, v)
+    ! subroutine solvePeriodRI(params, grids, ixy, ixA, ixAIME ,ixt,ixType,spa,  EV1, ccpOut, v)
     !implicit none
     !
     !!input
@@ -2122,7 +2121,7 @@
     !
     !!Calculate continuation value
     !do i=1,grids%supportSPA(ixt)
-    !    test= exp(GrossUtil(:,i))
+    !    test= GrossUtil(:,i)
     !    v(i) = log(sum(test))
     !end do
     !
@@ -2149,13 +2148,14 @@
     !
     !do d=1,dimD
     !    do y=1,grids%supportSPA(ixt)
-    !        res((d-1)*grids%supportSPA(ixt)+y) = GrossUtil(d,y) / sum((GrossUtil(:,y)))
+    !        res((d-1)*grids%supportSPA(ixt)+y) = (GrossUtil(d,y)) / sum((GrossUtil(:,y)))
     !    end do
     !end do
     !
     !end function
     !end subroutine
-
+   
+    
     !!-----------------------------------------------------------------------------------------------------------!
     ! Unpack all arrays
     !!-----------------------------------------------------------------------------------------------------------!

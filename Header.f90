@@ -7,7 +7,7 @@
     integer, parameter :: hp = selected_real_kind(20)
 
     integer, parameter :: numPointsType = TYPES_SIZE !1!
-    integer, parameter :: numPointsA = 30!100!50!10!
+    integer, parameter :: numPointsA = 30!10!30!100!50!
     
     integer, parameter :: numPointsProd = PROD_SIZE !5!10 !
     integer, parameter :: numPointsY = 2*numPointsProd !20
