@@ -423,8 +423,7 @@
             if (ierror.ne.0) stop 'mpi problem180'
 #endif  
             contEV =  modelObjects%EV
-            if ( ANY(modelObjects%EV /= modelObjects%EV)) stop
-            if (show .AND. rank==0) WRITE(*,*)  'Passed period ', ixt, ' of ',  Tperiods, 'PDV ', maxval(modelObjects%EV(1:17,1,11,1)) - minval(modelObjects%EV(1:17,1,11,1))
+            if (show .AND. rank==0) WRITE(*,*)  'Passed period ', ixt, ' of ',  Tperiods
 
             if (rank==0) then
                 write (outFile, *), trim(trim(pathDataStore) // "polType"),typeSim,trim("Period"),ixt,".txt"
@@ -627,7 +626,7 @@
     call  linearinterp1(grids%AIMEgrid(ixType,ixP + 1, :),EV1, numAIME, AIME, VA1, 1, 1 )
     VB1 = params%thetab*((A1+params%K)**(1-params%gamma))/(1-params%gamma)
 
-    objectivefunc = utility(params,cons,L) + params%beta * ((1- grids%mortal(ixP))* VA1+grids%mortal(ixP)*VB1)
+    objectivefunc = utility(params,cons,L)/params%lambda + params%beta * ((1- grids%mortal(ixP))* VA1+grids%mortal(ixP)*VB1)
 
 
     end function
@@ -1698,9 +1697,9 @@
     integer :: ixl,  ixA1, A1, i, j, iter, dim, dimD ,K, labourChoices, offset, testInt, maxmaxA
     integer, allocatable :: maxA(:)
     real(kind=rk) :: Y,  ubA1, A,AIME, cons, va1, vb1,  check,EVloc(numAIME), checkSave(grids%supportSPA(ixt)), checkOther(grids%supportSPA(ixt))
-    real(kind=rk) :: const(numPointsL,numPointsA,grids%supportSPA(ixt)) 
+    real(kind=hp) :: const(numPointsL,numPointsA,grids%supportSPA(ixt)) 
     real(kind=rk), allocatable :: values(:), ccpMat(:,:,:), eye(:,:)
-    real(kind=rk), allocatable  ::  GrossUtil(:,:), parameters(:), ccp(:), test(:)
+    real(kind=hp), allocatable  ::  GrossUtil(:,:), parameters(:), ccp(:), test(:)
     integer, save :: saveDim(2,numPointsL), lastixT = 0, unemp, div
     real(kind=rk), allocatable, save :: locinitialGuessRI(:,:)
     logical :: converged
@@ -1769,7 +1768,6 @@
     !end if 
     
     const=exp(const)
-    const = const**(1/params%lambda)
     
     
     dimD = sum(maxA)!labourChoices*(ixa1-1)
@@ -1885,7 +1883,7 @@
     !Calculate continuation value
     do i=1,grids%supportSPA(ixt)
         test= GrossUtil(:,i)
-        v(i) = params%lambda*log(sum(test))
+        v(i) = log(sum(test))
     end do
 
     contains
@@ -1894,7 +1892,7 @@
     use Header
     implicit none
     !input
-    real(kind=rk), intent(in) :: p(:)
+    real(kind=hp), intent(in) :: p(:)
     !output
     real(kind=rk), allocatable :: res(:)
     !local
@@ -1987,7 +1985,7 @@
     IMPLICIT NONE
     REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
     REAL(kind=rk), DIMENSION(size(x)) :: funcv
-    funcv = x - func(x)
+    !funcv = x - func(x)
     END FUNCTION funcv
     end subroutine
 
