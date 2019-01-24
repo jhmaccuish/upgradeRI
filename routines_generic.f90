@@ -2321,7 +2321,7 @@
     REAL(kind=rk), DIMENSION(size(x)) :: g,p,xold
     REAL(kind=rk), DIMENSION(size(x)), TARGET :: fvec
     REAL(kind=rk), DIMENSION(size(x),size(x)) :: fjac
-
+    integer::  requiredl, ios
     !Interfaces
     INTERFACE
     FUNCTION funcv(x)
@@ -2344,8 +2344,6 @@
 
     tolmin = tolf*1.e-2_rk
     f=fmin(funcv,fvec,x)
-    !print *, 'fvec/tolf', fvec, tolf, x
-    !if (maxval(abs(fvec(:))) < 0.01_dp*tolf) then
     error = maxval(abs(fvec(:)))
     if (error < tolf) then
         check=.false.
@@ -2358,6 +2356,12 @@
         xold(:)=x(:)
         fold=f
         p(:)=-fvec(:)
+        
+        inquire (iolength=requiredl) fjac
+        open (unit=201, form="unformatted", file='C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\jacob', ACCESS="STREAM", action='write', IOSTAT = ios)
+        write (201)  fjac
+        close( unit=201)
+
         call ludcmp(fjac,indx,d)
         call lubksb(fjac,indx,p)
         call lnsrch(funcv,xold,fold,g,p,x,f,stpmax,check,fmin,fvec)
@@ -2374,8 +2378,8 @@
         if (maxval(abs(x(:)-xold(:))/max(abs(x(:)),1.0_rk)) < TOLX) &
             RETURN
     end do
-    print *, 'newt values'
-    print *, x, xold, fvec, f, fold, tolf, fjac, g, stpmax
+    !print *, 'newt values'
+    !print *, x, xold, fvec, f, fold, tolf, fjac, g, stpmax
     write(*,*) 'MAXITS exceeded in newt'
     END SUBROUTINE newt
     ! ---------------------------------------------------------------------------------------!
@@ -2430,8 +2434,8 @@
     if (pabs > stpmax) p(:)=p(:)*stpmax/pabs
     slope=dot_product(g,p)
     if (slope >= 0.0) then
-        print *, g, p, stpmax, pabs, fold, xold
-        write(*,*) 'roundoff problem in lnsrch'
+        !print *, g, p, stpmax, pabs, fold, xold
+        !write(*,*) 'roundoff problem in lnsrch'
     endif
     alamin=TOLX/maxval(abs(p(:))/max(abs(xold(:)),1.0_rk))
     alam=1.0

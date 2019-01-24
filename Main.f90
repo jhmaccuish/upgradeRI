@@ -36,23 +36,28 @@
     integer :: lpath(Tperiods, numSims) !labour supply
     real (kind=rk) :: vpath(Tperiods, numSims)  !value
     integer :: apath(Tperiods + 1,numSims) !this is the path at the start of each period, so we include the 'start' of death
+    integer :: combinedData(3,24,numSims)
     real (kind=rk) :: AIME(Tperiods + 1,numSims)
 
-    real (kind=rk) :: start, finish, moments(2,24),weights(2,24), y(dimEstimation+1), p(dimEstimation+1,dimEstimation)
+
+    real (kind=rk) :: start, finish, moments(2,24),weights(2,24)
+    real (kind=rk), allocatable :: y(:), p(:,:)
     integer :: action, ios, requiredl, typeSim
-    integer (kind=1) ::SPA
+    integer ::SPA
     logical :: delCache
     INTEGER(kind=4) :: iter
+    real (kind=rk) :: gmmScorce
+    real (kind=rk) :: indxrk
 
 #ifdef mpi
     integer :: provided
 #endif     
 
     !CHARACTER(len=255) :: cwd
-    call chdir( '..' )
+    !call chdir( '..' )
     !CALL getcwd(cwd)
     !WRITE(*,*) TRIM(cwd)
-    
+
     call cpu_time(start)
 
 #ifdef mpi    
@@ -71,6 +76,7 @@
 #endif
 
     call setModel
+    allocate(y(dimEstimation+1), p(dimEstimation+1,dimEstimation))
 
     params%r= 0.02
 
@@ -121,8 +127,23 @@
     params%thetab =  2.894599836633410E-002! 2.926152647601828E-002 !2.894599354187538E-002 !
     params%k=650000
 
+    
+    params%nu = 0.233985260541000       
+    params%beta = 0.999690531106298      
+    params%gamma = 1.55555894964362     
+    params%db(1) = 0.878735699727095      
+    params%db(2) = -2.837850432880502E-006 
+    params%thetab = 1.944448764319950E-002
 
-    params%lambda= 0.001!1.0!0.01!!!
+         
+      
+        
+       
+ 
+  
+    
+    
+    params%lambda= 0.001!0.0000000001! 1.0!0.01!!!
 
     call setupMisc(params,grids)
     if (fullLifeCycle) then
@@ -139,8 +160,8 @@
         do typeSim = 1, numPointsType
             call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
         end do
-        
-        open (unit = 1001,file=trim(pathMoments) // '\moments.txt', action='read', IOSTAT = ios)
+
+        open (unit = 1001,file=trim(pathMoments) // 'moments.txt', action='read', IOSTAT = ios)
         open (unit = 1002,file=trim(pathMoments) // 'assetmom.txt', action='read', IOSTAT = ios)
         open (unit = 1003,file=trim(pathMoments) // 'Weight.txt', action='read', IOSTAT = ios)
         open (unit = 1004,file=trim(pathMoments) // 'weightAsset.txt', action='read', IOSTAT = ios)
@@ -158,23 +179,44 @@
         p(1,4) =   0.590379814467926  !0.590379814467926 !0.596815295617949 ! 0.590379716068728!
         p(1,5) = -4.224560477055699E-006 !-4.224560477055699E-006! -4.270610627570502E-006 !-4.224559772943942E-006 !
         p(1,6) =  2.894599836633410E-002 !2.894599836633410E-002! 2.926152647601828E-002 !2.894599354187538E-002 !
-        write (*,*), gmm_criteria(p(1,:))
 
+        !p(1,1) =  2.241321348790637E-002 !0.287177126203365 !0.866530785705649 ! 0.290307522834662 ! 0.287177078339264!
+        !p(1,2)=  0.975935121023040 ! 0.985724876594556 !0.990655741245757 ! 0.985451393874388 !0.985724939013559!
+        !p(1,3) =  0.180731055791926 ! 2.31567977728987 !1.78141736803550  ! 2.34092202506161! 2.31567939133319!
+        !p(1,4) =  4.607716845543490E-002 ! 0.596815295617949 !0.590379814467926 ! 0.590379716068728!
+        !p(1,5) =  -3.297128051827123E-007 !-4.224560477055699E-006!-1.274722676211178E-005!  -4.270610627570502E-006 !-4.224559772943942E-006 !
+        !p(1,6) =  2.259138287169178E-003 !2.894599836633410E-002!8.734191576465597E-002!  2.926152647601828E-002 !2.894599354187538E-002 !
+        !p(1,7) =  0.001 ! 7.804665289405568E-002
+
+        p(1,1) = 0.240191353041616
+        p(1,2) =0.999477774429760
+        p(1,3) =  1.93680557456545
+        p(1,4) = 0.493786285559129
+        p(1,5) =  -3.533369493611974E-006
+        p(1,6) = 2.421007064408893E-002
+        p(1,7) = 0.836387480497043
+        !Lambda = 0.436387480497043 is best!!!!
+        do indxrk = -0.4, 0.4, 0.1
+            p(1,7) = 0.836387480497043 + indxrk
+            if (rank==0) write (*,*), 'For lambda = ', p(1,7)
+            gmmScorce =  gmm_criteria(p(1,:))
+            if (rank==0) write (*,*), 'GMM Criteria is ', gmmScorce
+        end do
     else if (action .EQ. 1) then
-        params%nu =   0.287177126203365 !0.866530785705649 ! 0.290307522834662 ! 0.287177078339264!
-        params%beta =  0.985724876594556 !0.990655741245757 ! 0.985451393874388 !0.985724939013559!
-        params%gamma =  2.31567977728987 !1.78141736803550  ! 2.34092202506161! 2.31567939133319!
-        params%db(1) =  0.596815295617949 !0.590379814467926 ! 0.590379716068728!
-        params%db(2) = -4.224560477055699E-006!-1.274722676211178E-005!  -4.270610627570502E-006 !-4.224559772943942E-006 !
-        params%thetab =  2.894599836633410E-002!8.734191576465597E-002!  2.926152647601828E-002 !2.894599354187538E-002 !
+        params%nu =   0.236281327423160  !0.287177126203365 !0.866530785705649 ! 0.290307522834662 ! 0.287177078339264!
+        params%beta = 0.999986702072559 !0.985724876594556 !0.990655741245757 ! 0.985451393874388 !0.985724939013559!
+        params%gamma = 1.57082344698532 ! 2.31567977728987 !1.78141736803550  ! 2.34092202506161! 2.31567939133319!
+        params%db(1) = 0.887358618682115! 0.596815295617949 !0.590379814467926 ! 0.590379716068728!
+        params%db(2) = -2.865697889512581E-006!-4.224560477055699E-006!-1.274722676211178E-005!  -4.270610627570502E-006 !-4.224559772943942E-006 !
+        params%thetab = 1.963529386755248E-002 !2.894599836633410E-002!8.734191576465597E-002!  2.926152647601828E-002 !2.894599354187538E-002 !
+        !params%lambda =  7.804665289405568E-002
         params%k=650000
+            
+       
 
         do typeSim = 1, numPointsType
             call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
         end do
-        !write (*,*) grids%agrid(1,8,:)
-        !write (*,*) grids%ygrid(1,8,:)
-        !stop
 
         call solveValueFunction( params, grids, .TRUE., .TRUE. )
         !simulate
@@ -195,8 +237,15 @@
                         write (*,*) "Sim True SPA", 59+SPA
                         if (SPA==3) delCache = .TRUE.
                         call simWithUncer(params, grids, grids%Simy, cpath, apath, vpath, lpath, ypath, AIME, SPA, .FALSE. )
+                        combinedData(SPA,:,:) = apath(52-startAge+1:75-startAge+1,:)*(2*lpath(52-startAge+1:75-startAge+1,:)-1)
                         call writetofileAge(grids,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME, 59+SPA)
                     end do
+                    inquire (iolength=requiredl) combinedData
+                    !print *, path
+                    !print *, trim(path) // 'CombinedData'
+                    open (unit=201, form="unformatted", file=trim(path) // 'CombinedData', ACCESS="STREAM", action='write', IOSTAT = ios)
+                    write (201)  combinedData
+                    close( unit=201)
                 end if
             else
                 call simWithUncer(params, grids, grids%Simy, cpath, apath, vpath, lpath, ypath, AIME, TrueSPA, .TRUE. )
@@ -306,6 +355,7 @@
     params%db(1)= control(4)
     params%db(2)= control(5)
     params%thetab = control(6)
+    if (dimEstimation == 7) params%lambda = control(7)
     if (rank==0) then
         write (211,*) "Calcualting GMM for",  control(1),  control(2),  control(3),  control(4),  control(5),  control(6)
     end if
@@ -314,4 +364,3 @@
     end function
 
     end program Console1
-

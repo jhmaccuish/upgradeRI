@@ -22,15 +22,17 @@
     integer, parameter :: TrueSPA = 1
     integer, parameter :: TendRI = Tretire +  numPointsSPA - 1!CHANGE THIS ONE FOR RE
     integer, parameter :: normBnd = 4
-    integer, parameter :: dimEstimation = 6
+    integer, protected  :: dimEstimation = 6
     integer, parameter :: spouseretire = 65 -startAge+1
     integer, parameter :: stopwrok = 80 -startAge+1
     integer :: modelChoice
     integer, protected :: EndPeriodRI
     logical, protected :: uncerRE
-    logical, parameter :: counterFact = .TRUE.
+    logical, parameter :: counterFact = .TRUE.!.FALSE. !
     character(len=250), parameter :: pathMoments = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\moments\'
     character(len=250), parameter :: pathErrors = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\'
+    character(len=250), protected :: pathDataStore
+    character(len=250), protected :: path
     !Holds the structural parameters that will eventually be estimated (at least in some cases)
     type structparamstype
         !Personal
@@ -55,6 +57,7 @@
         real (kind=rk) :: p
         real (kind=rk) :: lambda
         real (kind=rk) :: percentCons
+        real (kind=rk) :: utlityShifter
     end type structparamstype
 
     type gridsType
@@ -128,12 +131,19 @@
     select case(modelChoice)
     case(1)
         EndPeriodRI = 1
+        pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncsBaseline\"
+        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\outBaseline\"
     case(2)
         EndPeriodRI = TendRI
         uncerRE = .TRUE.
+        pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncsRE\"
+        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\outRE\"
         case default
         EndPeriodRI = TendRI
         uncerRE = .FALSE.
+        pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncs\"
+        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\out\"
+        dimEstimation = dimEstimation + 1
     end select
 
     end subroutine
