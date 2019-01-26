@@ -222,7 +222,7 @@
     modelObjects%EV  = 0.0          ! continuation value at T-1
     modelObjects%V = 0.0
     modelObjects%policy= 0.0
-    !utlityShifter 
+    !utlityShifter
     do typeSim = 1, numPointsType
         if (show .AND. rank==0) WRITE(*,*)  'Solving for type ', typeSim, ' of ',  numPointsType
         contEV = 0.0
@@ -423,6 +423,9 @@
             if (ierror.ne.0) stop 'mpi problem180'
 #endif  
             contEV =  modelObjects%EV
+            if ( ANY(modelObjects%EV /= modelObjects%EV)) stop
+            if (show .AND. rank==0) WRITE(*,*)  'Passed period ', ixt, ' of ',  Tperiods, 'PDV ', maxval(modelObjects%EV)
+
             if (show .AND. rank==0) WRITE(*,*)  'Passed period ', ixt, ' of ',  Tperiods
 
             if (rank==0) then
@@ -1038,7 +1041,7 @@
             !write (*,*) 'L ', locl
             !write (*,*) 'L Weight ', weights(1,:)
             !write (*,*) 'A ', locA
-            !write (*,*) 'A Weight ', weights(2,:)            
+            !write (*,*) 'A Weight ', weights(2,:)
             !print *, ''
             gmm = dot_product(weights(1,:)*locL,weights(1,:)*locL) + dot_product(weights(2,:)*locA,weights(2,:)*locA)
         end if
@@ -1693,13 +1696,13 @@
     !!output
     real(kind=rk), intent(out) :: ccpOut(:,:,:), v(:)
     !local
-    integer, parameter :: hp = selected_real_kind(16)
+    !integer, parameter :: hp = selected_real_kind(16)
     integer :: ixl,  ixA1, A1, i, j, iter, dim, dimD ,K, labourChoices, offset, testInt, maxmaxA
     integer, allocatable :: maxA(:)
     real(kind=rk) :: Y,  ubA1, A,AIME, cons, va1, vb1,  check,EVloc(numAIME), checkSave(grids%supportSPA(ixt)), checkOther(grids%supportSPA(ixt))
-    real(kind=hp) :: const(numPointsL,numPointsA,grids%supportSPA(ixt)) 
+    real(kind=rk) :: const(numPointsL,numPointsA,grids%supportSPA(ixt))
     real(kind=rk), allocatable :: values(:), ccpMat(:,:,:), eye(:,:)
-    real(kind=hp), allocatable  ::  GrossUtil(:,:), parameters(:), ccp(:), test(:)
+    real(kind=rk), allocatable  ::  GrossUtil(:,:), parameters(:), ccp(:), test(:)
     integer, save :: saveDim(2,numPointsL), lastixT = 0, unemp, div
     real(kind=rk), allocatable, save :: locinitialGuessRI(:,:)
     logical :: converged
@@ -1708,7 +1711,7 @@
     !temp
     real(kind=rk), allocatable :: tempC1(:,:), tempC2(:,:)
     real(kind=rk) :: diff, lowestUtil
-    
+
     REAL(kind=rk) :: error
     LOGICAL :: logcheck
     ixa1 = 0
@@ -1731,45 +1734,45 @@
         call gross2net(params,grids,Y,ixt,ixl,ixType,AIME,spa)
 
 
-        ubA1 = (A + Y - params%minCons)*(1+params%r);    ! upper bound: assets tomorrow
+            ubA1 = (A + Y - params%minCons)*(1+params%r);    ! upper bound: assets tomorrow
         do ixA1 = 1, numPointsA
-            if (grids%Agrid(ixType,ixt+1, ixA1) > ubA1) then
-                const(ixl+1,ixa1:numPointsA,:) = -huge(const(ixl+1,ixa1,1))
-                maxA(ixl+1) = ixa1 - 1
-                exit
-            end if
-            A1 = grids%Agrid(ixType,ixt+1, ixA1)
+        if (grids%Agrid(ixType,ixt+1, ixA1) > ubA1) then
+            const(ixl+1,ixa1:numPointsA,:) = -huge(const(ixl+1,ixa1,1))
+            maxA(ixl+1) = ixa1 - 1
+            exit
+        end if
+        A1 = grids%Agrid(ixType,ixt+1, ixA1)
 
-            cons = A  + Y - (A1)/(1+params%r)
+        cons = A  + Y - (A1)/(1+params%r)
 
-            do i = 1, grids%supportSPA(ixt)-1
-                EVloc =  (1-params%p)*EV1(ixA1,:,numPointsSPA-grids%supportSPA(ixt)+i)+params%p*EV1(ixA1,:,numPointsSPA-grids%supportSPA(ixt)+i+1)
-                const(ixl+1,ixa1,i) = objectivefunc(params, grids,grids%Agrid(ixType,ixt+1, ixA1), A, Y,ixL,ixt,ixType, AIME,EVloc)
-                !if (const(ixl+1,ixa1,i) <lowestUtil) lowestUtil = const(ixl+1,ixa1,i)
-            end do
-            EVloc =  EV1(ixA1,:,numPointsSPA)
+        do i = 1, grids%supportSPA(ixt)-1
+            EVloc =  (1-params%p)*EV1(ixA1,:,numPointsSPA-grids%supportSPA(ixt)+i)+params%p*EV1(ixA1,:,numPointsSPA-grids%supportSPA(ixt)+i+1)
             const(ixl+1,ixa1,i) = objectivefunc(params, grids,grids%Agrid(ixType,ixt+1, ixA1), A, Y,ixL,ixt,ixType, AIME,EVloc)
-            !if (const(ixl+1,ixa1,i) < lowestUtil) lowestUtil = const(ixl+1,ixa1,i)
+            !if (const(ixl+1,ixa1,i) <lowestUtil) lowestUtil = const(ixl+1,ixa1,i)
+        end do
+        EVloc =  EV1(ixA1,:,numPointsSPA)
+        const(ixl+1,ixa1,i) = objectivefunc(params, grids,grids%Agrid(ixType,ixt+1, ixA1), A, Y,ixL,ixt,ixType, AIME,EVloc)
+        !if (const(ixl+1,ixa1,i) < lowestUtil) lowestUtil = const(ixl+1,ixa1,i)
         end do
     end do
     if (ixa1 > numPointsA) maxA(labourChoices) = numPointsA
     maxmaxA = maxval(maxA)
-    
+
     !allocate(tempC1(maxA(1),grids%supportSPA(ixt)))
     !tempC1 = const(1,1:maxA(1),:)
     !if (labourChoices==2) then
     !    allocate(tempC2(maxA(2),grids%supportSPA(ixt)))
     !    tempC2 = const(2,1:maxA(2),:)
-    !    if (rank==0) write(*,*) max(maxval(tempC1),maxval(tempC2)) - min(minval(tempC1),minval(tempC2)) 
+    !    if (rank==0) write(*,*) max(maxval(tempC1),maxval(tempC2)) - min(minval(tempC1),minval(tempC2))
     !    diff = max(maxval(tempC1),maxval(tempC2)) - min(minval(tempC1),minval(tempC2))
     !else
-    !    if (rank==0) write(*,*) maxval(tempC1) - minval(tempC1)   
+    !    if (rank==0) write(*,*) maxval(tempC1) - minval(tempC1)
     !    diff = maxval(tempC1) - minval(tempC1)
-    !end if 
-    
-    const=exp(const)
-    
-    
+    !end if
+
+    !const=exp(const)
+
+
     dimD = sum(maxA)!labourChoices*(ixa1-1)
     dim = grids%supportSPA(ixt)*dimD !*labourChoices*(ixa1-1)
     allocate(values(dim+1),parameters(dim),ccp(dim),ccpMat(grids%supportSPA(ixt),labourChoices,maxmaxA), GrossUtil(dimD,grids%supportSPA(ixt)),test(dimD))
@@ -1806,83 +1809,83 @@
     !Normalise guess to be prob dist
     do i=1,grids%supportspa(ixt)
         check = sum(parameters((/(i+j*grids%supportspa(ixt),j=0,dimd-1)/)))
-        parameters((/(i+j*grids%supportspa(ixt),j=0,dimd-1)/))=parameters((/(i+j*grids%supportspa(ixt),j=0,dimd-1)/))*check**-1
+            parameters((/(i+j*grids%supportspa(ixt),j=0,dimd-1)/))=parameters((/(i+j*grids%supportspa(ixt),j=0,dimd-1)/))*check**-1
     end do
 
-    check = 1.0
-    iter=0
-    converged = .FALSE.
-    div = 0
-    do while (.not. converged)
-        !Convergence criteria should depend of cost of attention otherwise utility can get very small and it just assigns equiprobable dist
-        do while (check >= (0.0001/10**div) ) !0.001!0.005!0.0001!0.00005 !0.00001 !/params%lambda *params%lambda
-            iter=iter+1
-            ccp = func(parameters)
-            check = sum(abs(ccp-parameters))
-            parameters=ccp
-        end do
-        !ccp = parameters
-        !call newt(funcv,jacob,ccp,0.001_rk,logcheck,error)
+        check = 1.0
+        iter=0
+        converged = .FALSE.
+        div = 0
+        do while (.not. converged)
+            !Convergence criteria should depend of cost of attention otherwise utility can get very small and it just assigns equiprobable dist
+            do while (check >= (0.0001/10**div) ) !0.001!0.005!0.0001!0.00005 !0.00001 !/params%lambda *params%lambda
+                iter=iter+1
+                ccp = func(parameters)
+                check = sum(abs(ccp-parameters))
+                parameters=ccp
+            end do
+            !ccp = parameters
+            !call newt(funcv,jacob,ccp,0.001_rk,logcheck,error)
 
-        !Check is good enough solution
-        do i=1,grids%supportSPA(ixt)
-            !write (text(i),*) (i+j*grids%supportSPA(ixt),j=0,Dimd-1)
-            checkSave(i) = sum(ccp((/(i+j*grids%supportSPA(ixt),j=0,Dimd-1)/))) !grids%supportSPA(ixt)*maxa(i)
-            if (checkSave(i) > 1.01 .OR. checkSave(i)<0.99) then
-                write (*,*) "CCP doesn't sum to 1", checkSave(i), params%lambda, ixt
-                !stop
-            else
-                if (div > 0) write (*,*) "passed!", checkSave(i)
-                converged = .TRUE.
-            end if
-        end do
-        div = div+1
-    end do
-    !!Cache for use on next round
-    if (ixy < numPointsY) then
-        saveDim(unemp,:) = grids%supportSPA(ixt)*maxa
-        locinitialGuessRI(unemp,:)=0.0
-        offset = 0
-        do k=1,labourChoices
+            !Check is good enough solution
+            do i=1,grids%supportSPA(ixt)
+                !write (text(i),*) (i+j*grids%supportSPA(ixt),j=0,Dimd-1)
+                checkSave(i) = sum(ccp((/(i+j*grids%supportSPA(ixt),j=0,Dimd-1)/))) !grids%supportSPA(ixt)*maxa(i)
+                if (checkSave(i) > 1.01 .OR. checkSave(i)<0.99) then
+                    write (*,*) "CCP doesn't sum to 1", checkSave(i), params%lambda, ixt
+                    !stop
+                else
+                    if (div > 0) write (*,*) "passed!", checkSave(i)
+                    converged = .TRUE.
+                end if
+            end do
+            div = div+1
+            end do
+            !!Cache for use on next round
+            if (ixy < numPointsY) then
+                saveDim(unemp,:) = grids%supportSPA(ixt)*maxa
+                locinitialGuessRI(unemp,:)=0.0
+            offset = 0
+            do k=1,labourChoices
             locinitialGuessRI(unemp,(k-1)*grids%supportSPA(ixt)*numPointsA+1:(k-1)*grids%supportSPA(ixt)*numPointsA+saveDim(unemp,k))= ccp((k-1)*offset+1:k*saveDim(unemp,k))
             offset = offset + saveDim(unemp,k)
         end do
-    end if
+        end if
 
-    ccpOut=0.0
-    ccpMat = 0.0
-    !ccpMat=reshape(ccp, (/grids%supportSPA(ixt),labourChoices,ixa1-1/))
-    offset = 0
-    do i=1,labourChoices
-        do j =1,maxmaxA
-            if (j > maxa(i)) then
+        ccpOut=0.0
+        ccpMat = 0.0
+        !ccpMat=reshape(ccp, (/grids%supportSPA(ixt),labourChoices,ixa1-1/))
+        offset = 0
+        do i=1,labourChoices
+            do j =1,maxmaxA
+                if (j > maxa(i)) then
                 ccpMat(:,i,j) = 0.0
                 exit
             end if
             do k=1,grids%supportSPA(ixt)
                 ccpMat(k,i,j) =  ccp(k+(j-1)*grids%supportSPA(ixt)+offset)
             end do
+            end do
+            offset = offset+saveDim(unemp,i)
         end do
-        offset = offset+saveDim(unemp,i)
-    end do
-    ccpOut(1:grids%supportSPA(ixt),1:labourChoices,1:maxmaxA)=ccpMat
+        ccpOut(1:grids%supportSPA(ixt),1:labourChoices,1:maxmaxA)=ccpMat
     do i=1,grids%supportSPA(ixt)
-        checkOther(i) = sum(ccpOut(i,:,:))
-        !write (*,*) checkSave(i), checkOther(i)
-        if (checkOther(i) > 1.05 .OR. checkOther(i)<0.95) then
-            write (*,*) "CCP doesn't sum to 1", checkOther(i), i, converged,  ixy, ixA, ixAIME, ixt, unemp
-            write (*,*) "converg check", checksave
-            write (*,*) "converg check", checkother
-            write (*,*) "ccp", ccp
-            write (*,*) "ccpout", ccpOut
-            stop
-        end if
-        !ccp((/(i+j*grids%supportSPA(ixt),j=0,Dimd-1)/))=ccp((/(i+j*grids%supportSPA(ixt),j=0,Dimd-1)/))*check**-1
+    checkOther(i) = sum(ccpOut(i,:,:))
+    !write (*,*) checkSave(i), checkOther(i)
+    if (checkOther(i) > 1.05 .OR. checkOther(i)<0.95) then
+        write (*,*) "CCP doesn't sum to 1", checkOther(i), i, converged,  ixy, ixA, ixAIME, ixt, unemp
+        write (*,*) "converg check", checksave
+        write (*,*) "converg check", checkother
+        write (*,*) "ccp", ccp
+        write (*,*) "ccpout", ccpOut
+        stop
+    end if
+    !ccp((/(i+j*grids%supportSPA(ixt),j=0,Dimd-1)/))=ccp((/(i+j*grids%supportSPA(ixt),j=0,Dimd-1)/))*check**-1
     end do
     !if (max(checkOther(1),checkOther(2)) /= max(checkSave(1), checkSave(2)) .OR. min(checkOther(1),checkOther(2)) /= min(checkSave(1), checkSave(2)) )pause
     !Calculate continuation value
     do i=1,grids%supportSPA(ixt)
-        test= GrossUtil(:,i)
+        test= exp(GrossUtil(:,i))
         v(i) = log(sum(test))
     end do
 
@@ -1892,69 +1895,69 @@
     use Header
     implicit none
     !input
-    real(kind=hp), intent(in) :: p(:)
+    real(kind=rk), intent(in) :: p(:)
     !output
-    real(kind=rk), allocatable :: res(:)
-    !local
-    real(kind=hp) :: systemEq(dim),test(dim), loc!,grids%supportSPA(ixt)
+        real(kind=rk), allocatable :: res(:)
+        !local
+        !real(kind=hp) :: systemEq(dim),test(dim), loc!,grids%supportSPA(ixt)
     integer:: d, y, locl, loca1, j
 
     allocate(res(dim))
     locl =1
     locA1 = 0
     do d=1,dimD
-        locA1 = locA1 + 1
-        if (locA1 > maxa(locl)) then
-            locl = locl+1
-            locA1=1
-        end if
-        do y=1,grids%supportSPA(ixt)
-            GrossUtil(d,y) = const(locl,locA1,y)*(dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d-1)*grids%supportSPA(ixt)+1:d*grids%supportSPA(ixt))))
-        end do
+    locA1 = locA1 + 1
+    if (locA1 > maxa(locl)) then
+        locl = locl+1
+        locA1=1
+    end if
+    do y=1,grids%supportSPA(ixt)
+        GrossUtil(d,y) = const(locl,locA1,y)+(dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d-1)*grids%supportSPA(ixt)+1:d*grids%supportSPA(ixt))))
+    end do
     end do
 
     do d=1,dimD
         do y=1,grids%supportSPA(ixt)
-            res((d-1)*grids%supportSPA(ixt)+y) = GrossUtil(d,y) / sum((GrossUtil(:,y)))
-        end do
-    end do
+            res((d-1)*grids%supportSPA(ixt)+y) = GrossUtil(d,y) - log(sum(exp(GrossUtil(:,y))))
+            end do
+            end do
+            res = exp(res)
+        end function
+        !Jacoben
+        FUNCTION Jacob(p)
+        USE header
+        IMPLICIT NONE
+        REAL(kind=rk), DIMENSION(:), INTENT(IN) :: p
+        REAL(kind=rk), DIMENSION(size(p),size(p)) :: Jacob
 
-    end function
-    !Jacoben
-    FUNCTION Jacob(p)
-    USE header
-    IMPLICIT NONE
-    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: p
-    REAL(kind=rk), DIMENSION(size(p),size(p)) :: Jacob
+        real(kind=rk) :: l1, l2 ,l3, l4
+            integer :: row, column
 
-    real(kind=rk) :: l1, l2 ,l3, l4
-    integer :: row, column
-
-    integer :: d1, y1, d2, y2, locl, locA1
-    !shouldn't do this twice
-    locl =1
-    locA1 = 0
-    do d1=1,dimD
-        locA1 = locA1 + 1
-        if (locA1 > maxa(locl)) then
-            locl = locl+1
-            locA1=1
-        end if
-        do y1=1,grids%supportSPA(ixt)
-            GrossUtil(d1,y1) = const(locl,locA1,y1)*&
-                (dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d1-1)*grids%supportSPA(ixt)+1:d1*grids%supportSPA(ixt))))
-        end do
-    end do
-    locl =1
-    locA1 = 0
-    do d1=1,dimD
-        locA1 = locA1 + 1
-        if (locA1 > maxa(locl)) then
-            locl = locl+1
-            locA1=1
-        end if
-        do y1=1,grids%supportSPA(ixt)
-            do d2=1,dimD
+            integer :: d1, y1, d2, y2, locl, locA1
+            !shouldn't do this twice
+            locl =1
+            locA1 = 0
+            do d1=1,dimD
+                locA1 = locA1 + 1
+                if (locA1 > maxa(locl)) then
+                    locl = locl+1
+                    locA1=1
+                end if
+                do y1=1,grids%supportSPA(ixt)
+                    GrossUtil(d1,y1) = const(locl,locA1,y1)*&
+                        (dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d1-1)*grids%supportSPA(ixt)+1:d1*grids%supportSPA(ixt))))
+                end do
+            end do
+            locl =1
+            locA1 = 0
+            do d1=1,dimD
+                locA1 = locA1 + 1
+                if (locA1 > maxa(locl)) then
+                    locl = locl+1
+                    locA1=1
+                end if
+                do y1=1,grids%supportSPA(ixt)
+                do d2=1,dimD
                 do y2=1,grids%supportSPA(ixt)
                     row = (d1-1)*grids%supportSPA(ixt)+y1
                     column = (d2-1)*grids%supportSPA(ixt)+y2
@@ -1975,8 +1978,8 @@
                         jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2)
                 end do
             end do
+            end do
         end do
-    end do
 
     END FUNCTION Jacob
 
@@ -1985,7 +1988,7 @@
     IMPLICIT NONE
     REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
     REAL(kind=rk), DIMENSION(size(x)) :: funcv
-    !funcv = x - func(x)
+    funcv = x - func(x)
     END FUNCTION funcv
     end subroutine
 
@@ -2263,7 +2266,7 @@
     !Intialise gues for Nedler-Mead Algorithm
     !!-----------------------------------------------------------------------------------------------------------!
     subroutine initialGuess(rank,params,grids,moments,weights,p,y)
-    implicit none
+        implicit none
 
     !inputs
     integer, intent(in) :: rank
@@ -2279,102 +2282,102 @@
     !local
     integer :: i, seedIn, n
     real (kind=rk) ::  uniformRand(dimEstimation+1)
-    INTEGER, DIMENSION(:), ALLOCATABLE :: seed
+        INTEGER, DIMENSION(:), ALLOCATABLE :: seed
 
     if (fullLifeCycle) then
-        if (rank==0) then
-            print '("Guess 1")'
-        end if
-        params%nu =      0.38022456150504280
-        params%beta =  0.97235322545400193
-        params%gamma =  2.092041817380061
-        params%db(1) = 0.91387622628345655
-        params%db(2) = -4.7393420983952571E-005
+    if (rank==0) then
+        print '("Guess 1")'
+    end if
+    params%nu =      0.38022456150504280
+    params%beta =  0.97235322545400193
+    params%gamma =  2.092041817380061
+    params%db(1) = 0.91387622628345655
+    params%db(2) = -4.7393420983952571E-005
 
-        p(1,1) = params%nu
-        p(1,2) = params%beta
-        p(1,3) = params%gamma
-        p(1,4) = params%db(1)
-        p(1,5) = params%db(2)
-        y(1) = gmm_criteria(p(1,:))
+    p(1,1) = params%nu
+    p(1,2) = params%beta
+    p(1,3) = params%gamma
+    p(1,4) = params%db(1)
+    p(1,5) = params%db(2)
+    y(1) = gmm_criteria(p(1,:))
 
-        if (rank==0) then
-            print '("Guess 2")'
-        end if
-        p(2,1) = 0.4637
-        p(2,2) = 0.970
-        P(2,3) = 1
-        p(2,4) = params%db(1)*0.9
-        p(2,5) = params%db(2)*1.2
-        y(2) = gmm_criteria(p(2,:))
+    if (rank==0) then
+        print '("Guess 2")'
+    end if
+    p(2,1) = 0.4637
+    p(2,2) = 0.970
+    P(2,3) = 1
+    p(2,4) = params%db(1)*0.9
+    p(2,5) = params%db(2)*1.2
+    y(2) = gmm_criteria(p(2,:))
 
-        if (rank==0) then
-            print '("Guess 3")'
-        end if
-        p(3,1) = 0.322
-        p(3,2) = 0.9843
-        P(3,3) = 2
-        p(3,4) = params%db(1)*1.1
-        p(3,5) = params%db(2)*0.7
-        y(3) = gmm_criteria(p(3,:))
+    if (rank==0) then
+        print '("Guess 3")'
+    end if
+    p(3,1) = 0.322
+    p(3,2) = 0.9843
+    P(3,3) = 2
+    p(3,4) = params%db(1)*1.1
+    p(3,5) = params%db(2)*0.7
+    y(3) = gmm_criteria(p(3,:))
 
-        if (rank==0) then
-            print '("Guess 4")'
-        end if
-        p(4,1) = 0.55
-        p(4,2) = 0.96
-        P(4,3) = 0.5
-        p(4,4) = params%db(1)*1.3
-        p(4,5) = params%db(2)*0.95
-        y(4) = gmm_criteria(p(4,:))
+    if (rank==0) then
+        print '("Guess 4")'
+    end if
+    p(4,1) = 0.55
+    p(4,2) = 0.96
+    P(4,3) = 0.5
+    p(4,4) = params%db(1)*1.3
+    p(4,5) = params%db(2)*0.95
+    y(4) = gmm_criteria(p(4,:))
 
-        if (rank==0) then
-            print '("Guess 5")'
-        end if
-        p(5,1) = 0.15
-        p(5,2) = 0.9999
-        P(5,3) = 4
-        p(5,4) = params%db(1)*0.85
-        p(5,5) = params%db(2)*1.15
-        y(5) = gmm_criteria(p(5,:))
+    if (rank==0) then
+        print '("Guess 5")'
+    end if
+    p(5,1) = 0.15
+    p(5,2) = 0.9999
+    P(5,3) = 4
+    p(5,4) = params%db(1)*0.85
+    p(5,5) = params%db(2)*1.15
+    y(5) = gmm_criteria(p(5,:))
 
-        if (rank==0) then
-            print '("Guess 6")'
-        end if
-        p(6,1) = 0.27
-        p(6,2) = 0.986
-        P(6,3) = 0.9
-        p(6,4) = params%db(1)*0.99
-        p(6,5) = params%db(2)*0.87
-        y(6) = gmm_criteria(p(6,:))
+    if (rank==0) then
+        print '("Guess 6")'
+    end if
+    p(6,1) = 0.27
+    p(6,2) = 0.986
+    P(6,3) = 0.9
+    p(6,4) = params%db(1)*0.99
+    p(6,5) = params%db(2)*0.87
+    y(6) = gmm_criteria(p(6,:))
 
     else
 
-        seedIn = 16101988
-        !Set seed
-        !CALL RANDOM_SEED(size = n)
-        ALLOCATE(seed(n))
-        seed = seedIn * (/ (i - 1, i = 1, n) /)
-        !CALL RANDOM_SEED(PUT = seed)
-        DEALLOCATE(seed)
+    seedIn = 16101988
+    !Set seed
+    !CALL RANDOM_SEED(size = n)
+    ALLOCATE(seed(n))
+    seed = seedIn * (/ (i - 1, i = 1, n) /)
+    !CALL RANDOM_SEED(PUT = seed)
+    DEALLOCATE(seed)
 
-        !!get uniform random number
-        CALL RANDOM_NUMBER(uniformRand)
-        uniformRand = -0.5+uniformRand
-        do i = 1, dimEstimation+1
-            if (rank==0) then
-                write (*,*) "Guess ", i
-            end if
-            p(i,1) = params%nu*(1+uniformRand(i))
-            p(i,2) = (0.95+0.1*uniformRand(i))!params%beta*(1+uniformRand(i))
-            p(i,3) = params%gamma*(1+uniformRand(i))
-            p(i,4) = params%db(1)*(1+uniformRand(i))
-            p(i,5) = params%db(2)*(1+uniformRand(i))
-            p(i,6) = params%thetab*(1+uniformRand(i))
-            if (dimEstimation ==7) p(i,7) = params%lambda*(1+uniformRand(i))
-            y(i) = gmm_criteria(p(i,:)) !if (i .GE. 7)
-            !write (*,*) uniformRand(i), y(i)
-        end do
+    !!get uniform random number
+    CALL RANDOM_NUMBER(uniformRand)
+    uniformRand = -0.5+uniformRand
+    do i = 1, dimEstimation+1
+        if (rank==0) then
+            write (*,*) "Guess ", i
+        end if
+        p(i,1) = params%nu*(1+uniformRand(i))
+        p(i,2) = (0.95+0.1*uniformRand(i))!params%beta*(1+uniformRand(i))
+        p(i,3) = params%gamma*(1+uniformRand(i))
+        p(i,4) = params%db(1)*(1+uniformRand(i))
+        p(i,5) = params%db(2)*(1+uniformRand(i))
+        p(i,6) = params%thetab*(1+uniformRand(i))
+        if (dimEstimation ==7) p(i,7) = params%lambda*(1+uniformRand(i))
+        y(i) = gmm_criteria(p(i,:)) !if (i .GE. 7)
+        !write (*,*) uniformRand(i), y(i)
+    end do
     end if
 
     contains
@@ -2448,331 +2451,331 @@
     reemployRaw(4,:) = (/0.238, 0.032, 0.02, 0.008, 0.008, 0.012, 0.008, 0.004, 0.0, 0.004/)
 
 #if PROD_SIZE == 5
-    !if (numPointsProd==5) then
-    !grids%reemploy = (/ 0.1923, 0.0333, 0.0200, 0.0108,0.0047/)
-    do i=1,numPointsType
-        grids%reemploy(i,1) =reemployRaw(i,1)+reemployRaw(i,2)!(/0.1762, 0.0415,0.0257,0.0165,0.0090/)
-        grids%reemploy(i,2) =reemployRaw(i,3)+reemployRaw(i,4)
-        grids%reemploy(i,3) =reemployRaw(i,5)+reemployRaw(i,6)
-        grids%reemploy(i,4) =reemployRaw(i,7)+reemployRaw(i,8)
-        grids%reemploy(i,5) =reemployRaw(i,9)+reemployRaw(i,10)
-    end do
+        !if (numPointsProd==5) then
+        !grids%reemploy = (/ 0.1923, 0.0333, 0.0200, 0.0108,0.0047/)
+        do i=1,numPointsType
+            grids%reemploy(i,1) =reemployRaw(i,1)+reemployRaw(i,2)!(/0.1762, 0.0415,0.0257,0.0165,0.0090/)
+            grids%reemploy(i,2) =reemployRaw(i,3)+reemployRaw(i,4)
+            grids%reemploy(i,3) =reemployRaw(i,5)+reemployRaw(i,6)
+            grids%reemploy(i,4) =reemployRaw(i,7)+reemployRaw(i,8)
+            grids%reemploy(i,5) =reemployRaw(i,9)+reemployRaw(i,10)
+        end do
 #elif  PROD_SIZE == 10         
-    !else if (numPointsProd==10) then
-    grids%reemploy = reemployRaw
-    !end if
+        !else if (numPointsProd==10) then
+        grids%reemploy = reemployRaw
+        !end if
 #endif        
 
-    grids%Ygrid(typeSim,:,:) = 0.0
-    grids%incTransitionMrx(:,:) = 0.0
-    grids%Ygrid(typeSim,:,(/(i,i=1,numPointsY-1,2)/))= Ygrid(:,:)
-    do i = 1, numPointsY
-        if (mod(i,2)==1) then
-            grids%incTransitionMrx(i,(/(i,i=1,numPointsY-1,2)/)) = (1-grids%unemploy(typeSim,i/2+1))*incTransitionMrx(i/2+1,:)
-            grids%incTransitionMrx(i,(/(i,i=2,numPointsY,2)/)) = grids%unemploy(typeSim,i/2+1)*incTransitionMrx(i/2+1,:)
-        else
-            grids%incTransitionMrx(i,i-1) = grids%reemploy(typeSim,i/2)
-            grids%incTransitionMrx(i,i) = 1-grids%reemploy(typeSim,i/2)
-        end if
-    end do
-
-    end subroutine
-    !!-----------------------------------------------------------------------------------------------------------!
-    !!-----------------------------------------------------------------------------------------------------------!
-    !Initalise sstuff
-    !!-----------------------------------------------------------------------------------------------------------!
-    !!-----------------------------------------------------------------------------------------------------------!
-    subroutine setupMisc(params,grids)
-    implicit none
-
-    !Changingin
-    type (structparamstype), intent(inout) :: params
-    type (gridsType), intent(inout) :: grids
-
-    !local
-    REAL(kind=rk) :: temp(85),  temp2(86), temp3(numSims, Tperiods)
-    integer :: ios, I
-    real (kind=rk) ::  sig_inc, sig_initial, conditioningProb
-    real (kind=rk) :: e(Tperiods, numSims)   ! the innovations to log income
-    real (kind=rk) :: logy1(1,numSims)        ! draws for initial income
-    real (kind=rk) :: ly(Tperiods, numSims)           ! log income
-    integer :: s, t,  workAge
-    real (kind=rk) ::  uniformRand(Tperiods,numSims)
-    INTEGER, DIMENSION(:), ALLOCATABLE :: seed
-    integer :: seedIn, n, productiv(1), typeSim, requiredl, finish
-    logical :: unemployed
-    character(len=1024) :: outFile
-    integer, allocatable :: rangeSims(:)
-
-#ifdef win
-    open (unit = 1001,file=trim(pathMoments)//'InitialAssets.txt', action='read', IOSTAT = ios)
-#else
-    !open (unit = 1001,file='../moments/InitialAssets.txt', action='read', IOSTAT = ios)
-#endif
-    read (1001, *,  IOSTAT = ios) grids%initialAssets
-    close (unit=1001)
-
-    temp = (/-0.01374, -0.01069, -0.00767, -0.00467, -0.00169, 0.00126, 0.00418,  0.00708, 0.00996, 0.01281, 0.01563, 0.01843, &
-        0.02121, 0.02396, 0.02668,  0.02938,  0.03206, 0.03471, 0.03733,  0.03994, 0.04251, 0.04506, 0.04759, 0.05009, &
-        0.05256, 0.05501,  0.05744,  0.05984,  0.06221, 0.06457, 0.06689,  0.06919, 0.07147, 0.07372, 0.07594, 0.07814, &
-        0.08032, 0.08247,  0.08460,  0.08670,  0.08877, 0.09082, 0.09285,  0.09485, 0.09683, 0.09878, 0.10070, 0.10261, &
-        0.10448, 0.10633, 0.10816,  0.10996,  0.11174, 0.11349, 0.11521,  0.11691, 0.11859, 0.12024, 0.12187, 0.12347, &
-        0.12505, (I*0.0,I=1,24)/)
-    grids%fc = temp(startAge-20+1:85)
-
-    call getIncomeGrid(params, grids)
-
-    temp2 = (/0.0, 0.0, 0.0, 0.0, 0.0, &
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, &
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.011071, 0.011907, 0.012807, &
-        0.013676, 0.01475, 0.015818, 0.016846, 0.018079, 0.019343, 0.020659, 0.0218, 0.023505, 0.025202, 0.02696, &
-        0.028831, 0.031017, 0.033496, 0.036024, 0.038912, 0.042054, 0.045689, 0.049653, 0.054036, 0.05886, 0.064093, &
-        0.069636, 0.07533, 0.081069, 0.086912, 0.093067, 0.099807, 0.107483, 0.116125, 0.125196, 0.134361, 0.143881, &
-        0.1542, 0.165675, 0.17842, 0.192363, 0.2117, 0.1672,0.1565, 0.1485,0.1459, 1.0/);
-    grids%mortal = temp2(startAge-20+1:86)
-
-    ! Obtain time series of incomes for our simulated individuals
-    ! Draw random draws for starting income and for innovations
-    sig_inc = params%sigma/ ((1-params%rho**2)**0.5)
-    sig_initial = 0.2950 !mean([0.073 0.053 0.110 0.112])^0.5;
-    ! normally distributed random draws for the innovation
-#ifdef win
-    open (unit = 1001,file=trim(pathErrors)//'Errors.txt', action='read', IOSTAT = ios)
-#else
-    !open (unit = 1001,file='./data/Errors.txt', action='read', IOSTAT = ios)
-#endif
-    read (1001, *) temp3
-    close (unit=1001)
-    e = transpose(temp3)
-#ifdef win
-    open (unit = 1001,file=trim(pathErrors)//'IntProd.txt', action='read', IOSTAT = ios)
-#else
-    !open (unit = 1001,file='./data/IntProd.txt', action='read', IOSTAT = ios)
-#endif
-
-    read (1001, *) logy1
-    close (unit=1001)
-
-    seedIn = 01042017
-    !Set seed
-    !CALL RANDOM_SEED(size = n)
-    !ALLOCATE(seed(n))
-    !seed = seedIn * (/ (i - 1, i = 1, n) /)
-    !CALL RANDOM_SEED(PUT = seed)
-    !DEALLOCATE(seed)
-
-    !!get uniform random number
-    CALL RANDOM_NUMBER(uniformRand)
-
-    do s = 1, numSims, 1                           ! loop through individuals
-        if (numPointsType == 1) then
-            typeSim = 1
-        else
-            if (real(s,rk)/numSims <0.16) then
-                typeSim = 1
-            else if (real(s,rk)/numSims <0.48) then
-                typeSim = 2
-            else if (real(s,rk)/numSims <0.59) then
-                typeSim =3
+        grids%Ygrid(typeSim,:,:) = 0.0
+        grids%incTransitionMrx(:,:) = 0.0
+        grids%Ygrid(typeSim,:,(/(i,i=1,numPointsY-1,2)/))= Ygrid(:,:)
+        do i = 1, numPointsY
+            if (mod(i,2)==1) then
+                grids%incTransitionMrx(i,(/(i,i=1,numPointsY-1,2)/)) = (1-grids%unemploy(typeSim,i/2+1))*incTransitionMrx(i/2+1,:)
+                grids%incTransitionMrx(i,(/(i,i=2,numPointsY,2)/)) = grids%unemploy(typeSim,i/2+1)*incTransitionMrx(i/2+1,:)
             else
-                typeSim =4
-            end if
-        end if
-        unemployed = .FALSE.
-        ! Get all the incomes, recursively
-        ly(1, s) = truncate(logy1(1, s), -normBnd*sig_inc,normBnd*sig_inc )
-        grids%Simy(1, s) = exp(ly(1, s)+params%delta(typeSim,1)*(startAge - 20 + 1)**2+params%delta(typeSim,2)*(startAge - 20 + 1)+params%delta(typeSim,3)-grids%fc(1))
-        do t = 1,Tperiods-1,1                              ! loop through time periods for a particular individual
-            workAge = startAge - 20 + t
-            if (unemployed) then
-                if (uniformRand(t,s) < grids%reemploy(typeSim,productiv(1))) then
-                    unemployed = .FALSE.
-                    ly(t+1, s) = (1 -params%rho) * params%mu + params%rho * ly(t, s) + e(t + 1, s)
-                    ly(t+1, s) = truncate(ly(t+1, s), -normBnd*sig_inc,normBnd*sig_inc )
-                    grids%Simy(t+1, s) = exp( ly(t+1, s) + params%delta(typeSim,1)*(workAge+1)**2+params%delta(typeSim,2)*(workAge+1)+params%delta(typeSim,3)-grids%fc(t) )
-                else
-                    ly(t+1, s)  = ly(t, s)
-                    grids%Simy(t+1, s) = 0
-                end if
-            else
-                productiv = minloc((grids%ygrid(typeSim,t,(/(i,i=1,numPointsY-1,2)/))-grids%Simy(t, s)),(grids%ygrid(typeSim,t,(/(i,i=1,numPointsY-1,2)/))-grids%Simy(t, s))>0)
-                if (uniformRand(t,s) < grids%unemploy(typeSim,productiv(1))) then
-                    unemployed = .TRUE.
-                    ly(t+1, s)  = ly(t, s)
-                    grids%Simy(t+1, s) = 0
-                else
-                    ly(t+1, s) = (1 -params%rho) * params%mu + params%rho * ly(t, s) + e(t + 1, s)
-                    ly(t+1, s) = truncate(ly(t+1, s), -normBnd*sig_inc,normBnd*sig_inc )
-                    grids%Simy(t+1, s) = exp( ly(t+1, s) + params%delta(typeSim,1)*(workAge+1)**2+params%delta(typeSim,2)*(workAge+1)+params%delta(typeSim,3)-grids%fc(t) )
-                end if
-            end if
-        end do ! t
-
-    end do! s
-
-    if (TendRI>Tretire) then
-        grids%supportSPA(1:Tretire-1) = numPointsSPA
-        do s = Tretire, TendRI
-            grids%supportSPA(s) = grids%supportSPA(s-1) - 1
-        end do
-
-        !posteriorSPA(TendRI,numPointsSPA)
-        grids%posteriorSPA=0.0
-        do t = 1, TendRI
-            workAge = startAge - 20 + t
-            if (t<Tretire) then
-                do s=0,(numPointsSPA -2)
-                    grids%posteriorSPA(t,s+1) =  choose(workAge,s)*(params%p**s)*((1-params%p)**(workAge-s))
-                end do
-                grids%posteriorSPA(t,numPointsSPA)=1-sum(grids%posteriorSPA(t,:))
-            else
-                grids%posteriorSPA(t,1:(t-Tretire+1))=0.0
-                conditioningProb=0.0
-                do s=0,(t-Tretire)
-                    conditioningProb =  choose(workAge,s)*(params%p**s)*((1-params%p)**(workAge-s))
-                end do
-                do s=(t-Tretire+1),(numPointsSPA -2)
-                    grids%posteriorSPA(t,s+1) =  (choose(workAge,s)*(params%p**s)*((1-params%p)**(workAge-s)))/(1-conditioningProb)
-                end do
-                grids%posteriorSPA(t,numPointsSPA)=1-sum(grids%posteriorSPA(t,:))
+                grids%incTransitionMrx(i,i-1) = grids%reemploy(typeSim,i/2)
+                grids%incTransitionMrx(i,i) = 1-grids%reemploy(typeSim,i/2)
             end if
         end do
-    end if
-    !seedIn =
+
+        end subroutine
+        !!-----------------------------------------------------------------------------------------------------------!
+        !!-----------------------------------------------------------------------------------------------------------!
+        !Initalise sstuff
+        !!-----------------------------------------------------------------------------------------------------------!
+        !!-----------------------------------------------------------------------------------------------------------!
+        subroutine setupMisc(params,grids)
+        implicit none
+
+        !Changingin
+        type (structparamstype), intent(inout) :: params
+        type (gridsType), intent(inout) :: grids
+
+        !local
+        REAL(kind=rk) :: temp(85),  temp2(86), temp3(numSims, Tperiods)
+        integer :: ios, I
+        real (kind=rk) ::  sig_inc, sig_initial, conditioningProb
+        real (kind=rk) :: e(Tperiods, numSims)   ! the innovations to log income
+        real (kind=rk) :: logy1(1,numSims)        ! draws for initial income
+        real (kind=rk) :: ly(Tperiods, numSims)           ! log income
+        integer :: s, t,  workAge
+        real (kind=rk) ::  uniformRand(Tperiods,numSims)
+        INTEGER, DIMENSION(:), ALLOCATABLE :: seed
+        integer :: seedIn, n, productiv(1), typeSim, requiredl, finish
+        logical :: unemployed
+        character(len=1024) :: outFile
+        integer, allocatable :: rangeSims(:)
+
+#ifdef win
+        open (unit = 1001,file=trim(pathMoments)//'InitialAssets.txt', action='read', IOSTAT = ios)
+#else
+        !open (unit = 1001,file='../moments/InitialAssets.txt', action='read', IOSTAT = ios)
+#endif
+        read (1001, *,  IOSTAT = ios) grids%initialAssets
+        close (unit=1001)
+
+        temp = (/-0.01374, -0.01069, -0.00767, -0.00467, -0.00169, 0.00126, 0.00418,  0.00708, 0.00996, 0.01281, 0.01563, 0.01843, &
+            0.02121, 0.02396, 0.02668,  0.02938,  0.03206, 0.03471, 0.03733,  0.03994, 0.04251, 0.04506, 0.04759, 0.05009, &
+            0.05256, 0.05501,  0.05744,  0.05984,  0.06221, 0.06457, 0.06689,  0.06919, 0.07147, 0.07372, 0.07594, 0.07814, &
+            0.08032, 0.08247,  0.08460,  0.08670,  0.08877, 0.09082, 0.09285,  0.09485, 0.09683, 0.09878, 0.10070, 0.10261, &
+            0.10448, 0.10633, 0.10816,  0.10996,  0.11174, 0.11349, 0.11521,  0.11691, 0.11859, 0.12024, 0.12187, 0.12347, &
+            0.12505, (I*0.0,I=1,24)/)
+        grids%fc = temp(startAge-20+1:85)
+
+        call getIncomeGrid(params, grids)
+
+        temp2 = (/0.0, 0.0, 0.0, 0.0, 0.0, &
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, &
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.011071, 0.011907, 0.012807, &
+            0.013676, 0.01475, 0.015818, 0.016846, 0.018079, 0.019343, 0.020659, 0.0218, 0.023505, 0.025202, 0.02696, &
+            0.028831, 0.031017, 0.033496, 0.036024, 0.038912, 0.042054, 0.045689, 0.049653, 0.054036, 0.05886, 0.064093, &
+            0.069636, 0.07533, 0.081069, 0.086912, 0.093067, 0.099807, 0.107483, 0.116125, 0.125196, 0.134361, 0.143881, &
+            0.1542, 0.165675, 0.17842, 0.192363, 0.2117, 0.1672,0.1565, 0.1485,0.1459, 1.0/);
+        grids%mortal = temp2(startAge-20+1:86)
+
+        ! Obtain time series of incomes for our simulated individuals
+        ! Draw random draws for starting income and for innovations
+        sig_inc = params%sigma/ ((1-params%rho**2)**0.5)
+        sig_initial = 0.2950 !mean([0.073 0.053 0.110 0.112])^0.5;
+        ! normally distributed random draws for the innovation
+#ifdef win
+        open (unit = 1001,file=trim(pathErrors)//'Errors.txt', action='read', IOSTAT = ios)
+#else
+        !open (unit = 1001,file='./data/Errors.txt', action='read', IOSTAT = ios)
+#endif
+        read (1001, *) temp3
+        close (unit=1001)
+        e = transpose(temp3)
+#ifdef win
+            open (unit = 1001,file=trim(pathErrors)//'IntProd.txt', action='read', IOSTAT = ios)
+#else
+            !open (unit = 1001,file='./data/IntProd.txt', action='read', IOSTAT = ios)
+#endif
+
+                read (1001, *) logy1
+                close (unit=1001)
+
+            seedIn = 01042017
+            !Set seed
+            !CALL RANDOM_SEED(size = n)
+            !ALLOCATE(seed(n))
+            !seed = seedIn * (/ (i - 1, i = 1, n) /)
+            !CALL RANDOM_SEED(PUT = seed)
+            !DEALLOCATE(seed)
+
+            !!get uniform random number
+            CALL RANDOM_NUMBER(uniformRand)
+
+            do s = 1, numSims, 1                           ! loop through individuals
+                if (numPointsType == 1) then
+                    typeSim = 1
+                else
+                    if (real(s,rk)/numSims <0.16) then
+                        typeSim = 1
+                    else if (real(s,rk)/numSims <0.48) then
+                        typeSim = 2
+                    else if (real(s,rk)/numSims <0.59) then
+                        typeSim =3
+                    else
+                        typeSim =4
+                    end if
+                end if
+                unemployed = .FALSE.
+                ! Get all the incomes, recursively
+                ly(1, s) = truncate(logy1(1, s), -normBnd*sig_inc,normBnd*sig_inc )
+                grids%Simy(1, s) = exp(ly(1, s)+params%delta(typeSim,1)*(startAge - 20 + 1)**2+params%delta(typeSim,2)*(startAge - 20 + 1)+params%delta(typeSim,3)-grids%fc(1))
+                do t = 1,Tperiods-1,1                              ! loop through time periods for a particular individual
+                    workAge = startAge - 20 + t
+                    if (unemployed) then
+                        if (uniformRand(t,s) < grids%reemploy(typeSim,productiv(1))) then
+                            unemployed = .FALSE.
+                            ly(t+1, s) = (1 -params%rho) * params%mu + params%rho * ly(t, s) + e(t + 1, s)
+                            ly(t+1, s) = truncate(ly(t+1, s), -normBnd*sig_inc,normBnd*sig_inc )
+                            grids%Simy(t+1, s) = exp( ly(t+1, s) + params%delta(typeSim,1)*(workAge+1)**2+params%delta(typeSim,2)*(workAge+1)+params%delta(typeSim,3)-grids%fc(t) )
+                        else
+                            ly(t+1, s)  = ly(t, s)
+                            grids%Simy(t+1, s) = 0
+                        end if
+                    else
+                        productiv = minloc((grids%ygrid(typeSim,t,(/(i,i=1,numPointsY-1,2)/))-grids%Simy(t, s)),(grids%ygrid(typeSim,t,(/(i,i=1,numPointsY-1,2)/))-grids%Simy(t, s))>0)
+                        if (uniformRand(t,s) < grids%unemploy(typeSim,productiv(1))) then
+                            unemployed = .TRUE.
+                            ly(t+1, s)  = ly(t, s)
+                            grids%Simy(t+1, s) = 0
+                        else
+                            ly(t+1, s) = (1 -params%rho) * params%mu + params%rho * ly(t, s) + e(t + 1, s)
+                            ly(t+1, s) = truncate(ly(t+1, s), -normBnd*sig_inc,normBnd*sig_inc )
+                            grids%Simy(t+1, s) = exp( ly(t+1, s) + params%delta(typeSim,1)*(workAge+1)**2+params%delta(typeSim,2)*(workAge+1)+params%delta(typeSim,3)-grids%fc(t) )
+                        end if
+                    end if
+                end do ! t
+
+            end do! s
+
+            if (TendRI>Tretire) then
+                grids%supportSPA(1:Tretire-1) = numPointsSPA
+                do s = Tretire, TendRI
+                    grids%supportSPA(s) = grids%supportSPA(s-1) - 1
+                end do
+
+            !posteriorSPA(TendRI,numPointsSPA)
+            grids%posteriorSPA=0.0
+            do t = 1, TendRI
+                workAge = startAge - 20 + t
+                if (t<Tretire) then
+                    do s=0,(numPointsSPA -2)
+                        grids%posteriorSPA(t,s+1) =  choose(workAge,s)*(params%p**s)*((1-params%p)**(workAge-s))
+                    end do
+                    grids%posteriorSPA(t,numPointsSPA)=1-sum(grids%posteriorSPA(t,:))
+                else
+                    grids%posteriorSPA(t,1:(t-Tretire+1))=0.0
+                    conditioningProb=0.0
+                    do s=0,(t-Tretire)
+                        conditioningProb =  choose(workAge,s)*(params%p**s)*((1-params%p)**(workAge-s))
+                    end do
+                    do s=(t-Tretire+1),(numPointsSPA -2)
+                        grids%posteriorSPA(t,s+1) =  (choose(workAge,s)*(params%p**s)*((1-params%p)**(workAge-s)))/(1-conditioningProb)
+                    end do
+                    grids%posteriorSPA(t,numPointsSPA)=1-sum(grids%posteriorSPA(t,:))
+                end if
+            end do
+            end if
+            !seedIn =
 
 
-    !!Set seed
+            !!Set seed
 
-    !ALLOCATE(seed(n))
-    !seed = seedIn * (/ (i - 1, i = 1, n) /)
-    !CALL RANDOM_SEED(PUT = seed)
-    !DEALLOCATE(seed)
+            !ALLOCATE(seed(n))
+            !seed = seedIn * (/ (i - 1, i = 1, n) /)
+            !CALL RANDOM_SEED(PUT = seed)
+            !DEALLOCATE(seed)
 
-    !!get uniform random number
-    CALL RANDOM_NUMBER(grids%initialGuessRI)
+            !!get uniform random number
+            CALL RANDOM_NUMBER(grids%initialGuessRI)
 
 
 
-    !if (rank==0) then
-    !    !write (*,*) rank
-    !    finish = 0.16*numSims
-    !    allocate(rangeSims(finish))
-    !    rangeSims = (/(i,i=1,finish)/)
-    !    write (outFile, *), trim("..\\temp\ypath"),1,".txt"
-    !    outfile=ADJUSTL(outfile)
-    !    inquire (iolength=requiredl)  grids%Simy(:, rangeSims)
-    !    open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-    !    write (201, '(6E15.3)' ) grids%Simy(:, rangeSims)
-    !    close( unit=201)
-    !end if
+            !if (rank==0) then
+            !    !write (*,*) rank
+            !    finish = 0.16*numSims
+            !    allocate(rangeSims(finish))
+            !    rangeSims = (/(i,i=1,finish)/)
+            !    write (outFile, *), trim("..\\temp\ypath"),1,".txt"
+            !    outfile=ADJUSTL(outfile)
+            !    inquire (iolength=requiredl)  grids%Simy(:, rangeSims)
+            !    open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
+            !    write (201, '(6E15.3)' ) grids%Simy(:, rangeSims)
+            !    close( unit=201)
+            !end if
 
-    end subroutine
+        end subroutine
 
-    !!-----------------------------------------------------------------------------------------------------------!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !! Law motion AIME
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!-----------------------------------------------------------------------------------------------------------!
-    subroutine nextAIME(grids,ixt,typeSim,ixl,yin, AIME)
-    implicit none
+        !!-----------------------------------------------------------------------------------------------------------!
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !! Law motion AIME
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !!-----------------------------------------------------------------------------------------------------------!
+        subroutine nextAIME(grids,ixt,typeSim,ixl,yin, AIME)
+        implicit none
 
-    !inputs
-    !type (structparamstype), intent(in) :: params
-    type (gridsType), intent(in) :: grids
-    integer, intent(in) :: ixt, typeSIm, ixl
-    real(kind=rk), intent(in):: yin
+        !inputs
+        !type (structparamstype), intent(in) :: params
+        type (gridsType), intent(in) :: grids
+        integer, intent(in) :: ixt, typeSIm, ixl
+        real(kind=rk), intent(in):: yin
 
-    !changing
-    real (kind=rk), intent(inout) :: AIME
+        !changing
+        real (kind=rk), intent(inout) :: AIME
 
-    !local
-    integer :: workAge
+        !local
+        integer :: workAge
 
-    workAge = startAge - 20 + ixt
-    ! Next peridos AIME
-    if (ixL==1 .AND.  ixt < spouseretire ) then ! spouseretire
-        AIME =  Yin/workAge + AIME * (workAge-1)/workAge
-    else if ((ixL==0 .AND.  ixt < spouseretire )) then !spouseretire
-        AIME = AIME * (workAge-1)/workAge
-    end if
-
-    end subroutine nextAIME
-    !!-----------------------------------------------------------------------------------------------------------!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !In period without RI max utility
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!-----------------------------------------------------------------------------------------------------------!
-    subroutine maxutility(params, grids,ixt,typeSim,ixa,ixAIME,ixl,ixy,spa,EV,policyA1temp,negV)
-    implicit none
-
-    !inputs
-    type (structparamstype), intent(in) :: params
-    type (gridsType), intent(in) :: grids
-    integer, intent(in) :: ixt,typeSim,ixa,ixAIME,ixl,ixy, spa
-    real (kind=rk), intent(in) :: EV(:,:)
-
-    !output
-    real(kind=rk), intent(out) :: negV
-    integer, intent(out) :: policyA1temp
-
-    !local
-    real (kind=rk) :: A,Y,AIME,ubA1, negVtemp, EV1(numAIME)
-    integer :: ixA1
-    negV = -huge(negv)
-
-    ! Value of income and information for optimisation
-    A    = grids%Agrid(typeSim,ixt, ixA)            ! assets today
-    Y    = grids%Ygrid(typeSim,ixt, ixY)
-    Y    = ixL*Y+ (1-ixL)*grids%benefit(ixt)
-    AIME = grids%AIMEgrid(typeSim,ixt,ixAIME)
-    !Also doesn't matter if income is arbitrary as in that case they are too old for AIME to increase
-    call nextAIME(grids,ixt,typeSim,ixl,y,AIME)
-    !set spa=60 as it shouldn't matter as this subroutine only called if above SPA
-    call gross2net(params,grids,Y,ixt,ixl,typeSim,AIME,spa)
-
-    ubA1 = (A + Y - params%minCons)*(1+params%r);    ! upper bound: assets tomorrow
-    do ixA1 = 1, numPointsA
-        if (grids%Agrid(typeSim,ixt+1, ixA1) > ubA1) then
-            exit
+        workAge = startAge - 20 + ixt
+        ! Next peridos AIME
+        if (ixL==1 .AND.  ixt < spouseretire ) then ! spouseretire
+            AIME =  Yin/workAge + AIME * (workAge-1)/workAge
+        else if ((ixL==0 .AND.  ixt < spouseretire )) then !spouseretire
+            AIME = AIME * (workAge-1)/workAge
         end if
-        EV1  = EV(ixA1,:)  ! relevant section of EV matrix (in assets tomorrow) because income is irrelevant
-        negVtemp = objectivefunc(params, grids,grids%Agrid(typeSim,ixt+1, ixA1), A, Y,ixL,ixt,typeSim, AIME,EV1)
-        if (negVtemp > negV) then
-            negV = negVtemp
-            policyA1temp = ixa1
-        end if
-    end do
 
-    end subroutine
-    !!-----------------------------------------------------------------------------------------------------------!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !In period without RI max utility
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!-----------------------------------------------------------------------------------------------------------!
-    !function integrateSPA(grids,EV,ixt,knowsSPA)
-    !implicit none
-    !
-    !!inputs
-    !type (gridsType), intent(in) :: grids
-    !real (kind=rk), intent(in) :: EV(:,:,:)
-    !logical, intent(in) :: knowsSPA
-    !integer, intent(in) :: ixt
-    !
-    !!output
-    !real (kind=rk) :: integrateSPA(:,:)
-    !
-    !!local
-    !integer:: i, j
-    !
-    !do i=1,size(EV,1)
-    !    do j=1,size(EV,2)
-    !        if (knowsSPA) then
-    !            integrateSPA(i,j) =
-    !        else
-    !
-    !        end if
-    !    end do
-    !end do
-    !
-    !end function
+        end subroutine nextAIME
+        !!-----------------------------------------------------------------------------------------------------------!
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !In period without RI max utility
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !!-----------------------------------------------------------------------------------------------------------!
+        subroutine maxutility(params, grids,ixt,typeSim,ixa,ixAIME,ixl,ixy,spa,EV,policyA1temp,negV)
+        implicit none
+
+        !inputs
+        type (structparamstype), intent(in) :: params
+        type (gridsType), intent(in) :: grids
+        integer, intent(in) :: ixt,typeSim,ixa,ixAIME,ixl,ixy, spa
+        real (kind=rk), intent(in) :: EV(:,:)
+
+        !output
+        real(kind=rk), intent(out) :: negV
+        integer, intent(out) :: policyA1temp
+
+        !local
+        real (kind=rk) :: A,Y,AIME,ubA1, negVtemp, EV1(numAIME)
+        integer :: ixA1
+        negV = -huge(negv)
+
+        ! Value of income and information for optimisation
+        A    = grids%Agrid(typeSim,ixt, ixA)            ! assets today
+        Y    = grids%Ygrid(typeSim,ixt, ixY)
+        Y    = ixL*Y+ (1-ixL)*grids%benefit(ixt)
+        AIME = grids%AIMEgrid(typeSim,ixt,ixAIME)
+        !Also doesn't matter if income is arbitrary as in that case they are too old for AIME to increase
+        call nextAIME(grids,ixt,typeSim,ixl,y,AIME)
+        !set spa=60 as it shouldn't matter as this subroutine only called if above SPA
+        call gross2net(params,grids,Y,ixt,ixl,typeSim,AIME,spa)
+
+        ubA1 = (A + Y - params%minCons)*(1+params%r);    ! upper bound: assets tomorrow
+        do ixA1 = 1, numPointsA
+            if (grids%Agrid(typeSim,ixt+1, ixA1) > ubA1) then
+                exit
+            end if
+            EV1  = EV(ixA1,:)  ! relevant section of EV matrix (in assets tomorrow) because income is irrelevant
+            negVtemp = objectivefunc(params, grids,grids%Agrid(typeSim,ixt+1, ixA1), A, Y,ixL,ixt,typeSim, AIME,EV1)
+            if (negVtemp > negV) then
+                negV = negVtemp
+                policyA1temp = ixa1
+            end if
+        end do
+
+        end subroutine
+        !!-----------------------------------------------------------------------------------------------------------!
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !In period without RI max utility
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !!!-----------------------------------------------------------------------------------------------------------!
+        !function integrateSPA(grids,EV,ixt,knowsSPA)
+        !implicit none
+        !
+        !!inputs
+        !type (gridsType), intent(in) :: grids
+        !real (kind=rk), intent(in) :: EV(:,:,:)
+        !logical, intent(in) :: knowsSPA
+        !integer, intent(in) :: ixt
+        !
+        !!output
+        !real (kind=rk) :: integrateSPA(:,:)
+        !
+        !!local
+        !integer:: i, j
+        !
+        !do i=1,size(EV,1)
+        !    do j=1,size(EV,2)
+        !        if (knowsSPA) then
+        !            integrateSPA(i,j) =
+        !        else
+        !
+        !        end if
+        !    end do
+        !end do
+        !
+        !end function
     end module routines
