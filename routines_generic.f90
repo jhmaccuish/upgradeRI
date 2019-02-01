@@ -2357,10 +2357,10 @@
         fold=f
         p(:)=-fvec(:)
         
-        inquire (iolength=requiredl) fjac
-        open (unit=201, form="unformatted", file='C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\jacob', ACCESS="STREAM", action='write', IOSTAT = ios)
-        write (201)  fjac
-        close( unit=201)
+        !inquire (iolength=requiredl) fjac
+        !open (unit=201, form="unformatted", file='C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\jacob', ACCESS="STREAM", action='write', IOSTAT = ios)
+        !write (201)  fjac
+        !close( unit=201)
 
         call ludcmp(fjac,indx,d)
         call lubksb(fjac,indx,p)

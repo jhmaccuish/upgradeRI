@@ -128,15 +128,22 @@
     params%k=650000
 
     
-    params%nu = 0.233985260541000       
-    params%beta = 0.999690531106298      
-    params%gamma = 1.55555894964362     
-    params%db(1) = 0.878735699727095      
-    params%db(2) = -2.837850432880502E-006 
-    params%thetab = 1.944448764319950E-002
+    !params%nu = 0.233985260541000       
+    !params%beta = 0.999690531106298      
+    !params%gamma = 1.55555894964362     
+    !params%db(1) = 0.878735699727095      
+    !params%db(2) = -2.837850432880502E-006 
+    !params%thetab = 1.944448764319950E-002
 
          
-      
+        params%nu =   0.236281327423160  !0.287177126203365 !0.866530785705649 ! 0.290307522834662 ! 0.287177078339264!
+        params%beta = 0.999986702072559 !0.985724876594556 !0.990655741245757 ! 0.985451393874388 !0.985724939013559!
+        params%gamma = 1.57082344698532 ! 2.31567977728987 !1.78141736803550  ! 2.34092202506161! 2.31567939133319!
+        params%db(1) = 0.887358618682115! 0.596815295617949 !0.590379814467926 ! 0.590379716068728!
+        params%db(2) = -2.865697889512581E-006!-4.224560477055699E-006!-1.274722676211178E-005!  -4.270610627570502E-006 !-4.224559772943942E-006 !
+        params%thetab = 1.963529386755248E-002 !2.894599836633410E-002!8.734191576465597E-002!  2.926152647601828E-002 !2.894599354187538E-002 !
+        !params%lambda =  7.804665289405568E-002
+        params%k=650000      
         
        
  
@@ -155,7 +162,7 @@
 #ifdef debugMPI
     if (rank==0) pause
 #endif    
-    action =1
+    action =2
     if (action .EQ. 0) then
         do typeSim = 1, numPointsType
             call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
@@ -257,17 +264,11 @@
         if (TrueSpa .NE. 1) then
             write (*,*) "Only estimate with SPA = 60"
         end if
-#ifdef win
-        open (unit = 1001,file='..\\..\\moments\\moments.txt', action='read', IOSTAT = ios)
-        open (unit = 1002,file='..\\..\\moments\\assetmom.txt', action='read', IOSTAT = ios)
-        open (unit = 1003,file='..\\..\\moments\\Weight.txt', action='read', IOSTAT = ios)
-        open (unit = 1004,file='..\\..\\moments\\weightAsset.txt', action='read', IOSTAT = ios)
-#else
-        open (unit = 1001,file='../moments/moments.txt', action='read', IOSTAT = ios)
-        open (unit = 1002,file='../moments/assetmom.txt', action='read', IOSTAT = ios)
-        open (unit = 1003,file='../moments/Weight.txt', action='read', IOSTAT = ios)
-        open (unit = 1004,file='../moments/weightAsset.txt', action='read', IOSTAT = ios)
-#endif
+        open (unit = 1001,file=trim(pathMoments) // 'moments.txt', action='read', IOSTAT = ios)
+        open (unit = 1002,file=trim(pathMoments) // 'assetmom.txt', action='read', IOSTAT = ios)
+        open (unit = 1003,file=trim(pathMoments) // 'Weight.txt', action='read', IOSTAT = ios)
+        open (unit = 1004,file=trim(pathMoments) // 'weightAsset.txt', action='read', IOSTAT = ios)
+
         read (1001, *) moments(1,:)
         read (1002, *) moments(2,:)
         read (1003, *) weights(1,:)
@@ -283,26 +284,20 @@
 
         call initialGuess(rank,params,grids,moments,weights,p,y)
 
-        if (rank==0) open (unit=211, file='..\\out\guess2.txt', status='unknown', action='write')
+        if (rank==0) open (unit = 211,file=trim(path) // 'guess2.txt', action='read', IOSTAT = ios) !open (unit=211, file='..\\out\guess2.txt', status='unknown', action='write')
         call amoeba(p,y, 0.001_rk,gmm_criteria,iter,.TRUE.,0.0_rk) !0.0001_rk !0.001_rk!0.07_rk!0.0001054 !0.000000001_rk !
         if (rank==0) close (unit=211)
 
         if (rank==0) then
             print '("P = ",f6.3)',P(1,:)
             print '("Y = ",f16.3)',Y
-#ifdef win
+            
             inquire (iolength=requiredl)  P(1,:)
-            open (unit=201, file='..\\out\params.txt', status='unknown',recl=requiredl, action='write')
+            open (unit = 201,file=trim(path) // 'params.txt', action='read', IOSTAT = ios)
+            !open (unit=201, file='..\\out\params.txt', status='unknown',recl=requiredl, action='write')
+
             write (201, * ) P(1,:)
-#else
-            !inquire (iolength=requiredl)  P
-            !open (unit=201, file='./out/params.txt', status='unknown',recl=requiredl, action='write')
-            !write (201, * ) P(1,1)
-            !write (201, * ) P(1,2)
-            !write (201, * ) P(1,3)
-            !write (201, * ) P(1,4)
-            !write (201, * ) P(1,5)
-#endif
+
             close (unit=201)
 
             print '("Generating files")'

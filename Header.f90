@@ -7,7 +7,11 @@
     integer, parameter :: hp = selected_real_kind(20)
 
     integer, parameter :: numPointsType = TYPES_SIZE !1!
+#ifdef _WIN64      
     integer, parameter :: numPointsA = 30!10!30!100!50!
+#else
+    integer, parameter :: numPointsA = 60!10!30!100!50!
+#endif 
     
     integer, parameter :: numPointsProd = PROD_SIZE !5!10 !
     integer, parameter :: numPointsY = 2*numPointsProd !20
@@ -29,8 +33,13 @@
     integer, protected :: EndPeriodRI
     logical, protected :: uncerRE
     logical, parameter :: counterFact = .TRUE.!.FALSE. !
+#ifdef _WIN64          
     character(len=250), parameter :: pathMoments = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\moments\'
     character(len=250), parameter :: pathErrors = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\'
+#else
+    character(len=250), parameter :: pathMoments = '~/FortrCodeRI/moments/'
+    character(len=250), parameter :: pathErrors = '~/FortrCodeRI/Errors/'
+#endif 
     character(len=250), protected :: pathDataStore
     character(len=250), protected :: path
     !Holds the structural parameters that will eventually be estimated (at least in some cases)
@@ -119,30 +128,53 @@
     include 'mpif.h'
 #endif 
 
+#ifdef _WIN64
     if (rank == 0) then
         write (*,*) "Press 1 for RE non uncert SPA, 2 for RE+uncert SPA, 3 for RI"
 
         read (*,*) modelChoice
     end if
+#else
+    modelChoice = 3
+#endif 
+
 #ifdef mpi
     call MPI_Bcast( modelChoice, 1, MPI_INTEGER ,0, mpi_comm_world, ierror)
     if (ierror.ne.0) stop 'mpi problem171'
 #endif     
-    select case(modelChoice)
+
+
+
+select case(modelChoice)
     case(1)
         EndPeriodRI = 1
+#ifdef _WIN64
         pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncsBaseline\"
         path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\outBaseline\"
+#else
+        pathDataStore = "/scratch/scratch/uctphen/PolicyFuncsBaseline/"
+        path = "/scratch/scratch/uctphen/outBaseline/"
+#endif         
     case(2)
         EndPeriodRI = TendRI
         uncerRE = .TRUE.
+#ifdef _WIN64
         pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncsRE\"
         path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\outRE\"
-        case default
+#else
+        pathDataStore = "/scratch/scratch/uctphen/policyFuncsRE/"
+        path = "/scratch/scratch/uctphen/outRE/"
+#endif 
+    case default
         EndPeriodRI = TendRI
         uncerRE = .FALSE.
+#ifdef _WIN64
         pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncs\"
         path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\out\"
+#else
+        pathDataStore = "/scratch/scratch/uctphen/PolicyFuncs/"
+        path = "/scratch/scratch/uctphen/out/"
+#endif 
         dimEstimation = dimEstimation + 1
     end select
 

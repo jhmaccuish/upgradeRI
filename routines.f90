@@ -184,6 +184,7 @@
     real (kind=rk) :: tempV(mpiDim*numPointsY*numPointsSPA), temppolicy(mpiDim*numPointsSPA*numPointsY*numPointsL*numPointsA), tempEV(mpiDim*numPointsY*numPointsSPA)
     real (kind=rk), allocatable :: LocV(:), Locpolicy(:), LocEV(:)
     integer :: locVecSize, otherDimP, testRank, thisCoreStartTest, thisCoreEndTest, start, finish, age, otherDimV
+    integer(kind=4):: recvcounts(0:procSize-1), displ(0:procSize-1), mpiSIze
 
     !Test
     real (kind=rk) :: testC
@@ -206,9 +207,9 @@
 
     tasksPerCore = int(numTasks/procSize)
     leftOverTasks = numTasks - tasksPerCore*procSize
-    if (leftOverTasks.gt.0) tasksPerCore = tasksPerCore + 1
-    thisCoreStart = rank*tasksPerCore + 1
-    thisCoreEnd = min((rank+1)*tasksPerCore, numTasks)
+
+    thisCoreStart = rank*tasksPerCore + 1 + max(rank + leftOverTasks - procsize,0)
+    thisCoreEnd = (rank+1)*tasksPerCore + max(rank + leftOverTasks +1 - procsize,0)
 #ifdef mpi
     call mpi_barrier(mpi_comm_world, ierror)
     if (ierror.ne.0) stop 'mpi problem180'
@@ -222,7 +223,7 @@
     modelObjects%EV  = 0.0          ! continuation value at T-1
     modelObjects%V = 0.0
     modelObjects%policy= 0.0
-    !utlityShifter 
+    !utlityShifter
     do typeSim = 1, numPointsType
         if (show .AND. rank==0) WRITE(*,*)  'Solving for type ', typeSim, ' of ',  numPointsType
         contEV = 0.0
@@ -366,24 +367,36 @@
             locVecSize = thisCoreEnd - thisCoreStart + 1
             otherDimP = numPointsSPA*numPointsY*numPointsL*numPointsA
             otherDimV = numPointsSPA*numPointsY
-            allocate(Locpolicy(locVecSize*otherDimP),LocEV(locVecSize*otherDimV),locV(locVecSize*otherDimV))
 
+            allocate(Locpolicy(locVecSize*otherDimP),LocEV(locVecSize*otherDimV),locV(locVecSize*otherDimV))
             call unpackArrays(modelObjects%policy(:, :,:, :,:,:), modelObjects%V(:, :, :,:), modelObjects%EV(:, :,:, :), &
                 locpolicy, locV, locEV, mpiDim,otherDimP,otherDimV,thisCoreStart,thisCoreEnd)
 
-            call mpi_allgather(LocV, locVecSize*otherDimV, mpi_double_precision, VecV, locVecSize*otherDimV, mpi_double_precision, mpi_comm_world, ierror)
+            recvcounts(0:procsize - leftOverTasks-1) = tasksPerCore*otherDimP
+            recvcounts(procsize - leftOverTasks:procsize-1) = (tasksPerCore+1)*otherDimP
+            displ = (/((i*tasksPerCore  + max(i + leftOverTasks - procsize,0))*otherDimP,i=0,procSize-1)/)
+            mpiSIze = locVecSize*otherDimP
 
-            call mpi_allgather(Locpolicy, locVecSize*otherDimP, mpi_double_precision, Vecpolicy, locVecSize*otherDimP, mpi_double_precision, mpi_comm_world, ierror)
+            call mpi_gatherV(Locpolicy, mpiSIze, mpi_double_precision, Vecpolicy,  recvcounts, displ, mpi_double_precision, 0, mpi_comm_world, ierror)
 
-            call mpi_allgather(LocEV(1), locVecSize*otherDimV, mpi_double_precision, VecEV(1), locVecSize*otherDimV, mpi_double_precision, mpi_comm_world, ierror)
+            recvcounts(0:procsize - leftOverTasks-1) = tasksPerCore*otherDimV
+            call mpi_barrier(mpi_comm_world, ierror)
+
+            recvcounts(procsize - leftOverTasks:procsize-1) = (tasksPerCore+1)*otherDimV
+            displ = (/((i*tasksPerCore  + max(i + leftOverTasks - procsize,0))*otherDimV,i=0,procSize-1)/)
+            mpiSIze = locVecSize*otherDimV
+            call mpi_barrier(mpi_comm_world, ierror)
+
+            call mpi_allgatherV(LocV, mpiSIze, mpi_double_precision, VecV, recvcounts, displ, mpi_double_precision, mpi_comm_world, ierror)
+            call mpi_allgatherV(LocEV, mpiSIze, mpi_double_precision, VecEV, recvcounts, displ, mpi_double_precision, mpi_comm_world, ierror)
 
             deallocate(LocV,Locpolicy,LocEV)
             tempV = VecV
             temppolicy = Vecpolicy
             tempEV = VecEV
             do testRank = 0, (procSize-1)
-                thisCoreStartTest = testrank*tasksPerCore + 1
-                thisCoreEndTest = min((testrank+1)*tasksPerCore, numTasks)
+                thisCoreStartTest = testrank*tasksPerCore + 1  + max(testrank + leftOverTasks - procsize,0)
+                thisCoreEndTest = (testrank+1)*tasksPerCore + max(rank + leftOverTasks +1 - procsize,0)
                 locVecSize = thisCoreEndTest - thisCoreStartTest + 1
                 allocate(LocV(locVecSize*otherDimV),Locpolicy(locVecSize*otherDimP),LocEV(locVecSize*otherDimV))
 
@@ -423,10 +436,6 @@
             if (ierror.ne.0) stop 'mpi problem180'
 #endif  
             contEV =  modelObjects%EV
-
-            if ( ANY(modelObjects%EV /= modelObjects%EV)) stop
-            if (show .AND. rank==0) WRITE(*,*)  'Passed period ', ixt, ' of ',  Tperiods, 'PDV ', maxval(modelObjects%EV)
-
             if (show .AND. rank==0) WRITE(*,*)  'Passed period ', ixt, ' of ',  Tperiods
 
             if (rank==0) then
@@ -1042,7 +1051,7 @@
             !write (*,*) 'L ', locl
             !write (*,*) 'L Weight ', weights(1,:)
             !write (*,*) 'A ', locA
-            !write (*,*) 'A Weight ', weights(2,:)            
+            !write (*,*) 'A Weight ', weights(2,:)
             !print *, ''
             gmm = dot_product(weights(1,:)*locL,weights(1,:)*locL) + dot_product(weights(2,:)*locA,weights(2,:)*locA)
         end if
@@ -1697,30 +1706,29 @@
     !!output
     real(kind=rk), intent(out) :: ccpOut(:,:,:), v(:)
     !local
-    integer, parameter :: hp = selected_real_kind(16)
+    !integer, parameter :: hp = selected_real_kind(16)
     integer :: ixl,  ixA1, A1, i, j, iter, dim, dimD ,K, labourChoices, offset, testInt, maxmaxA
     integer, allocatable :: maxA(:)
     real(kind=rk) :: Y,  ubA1, A,AIME, cons, va1, vb1,  check,EVloc(numAIME), checkSave(grids%supportSPA(ixt)), checkOther(grids%supportSPA(ixt))
-    real(kind=rk) :: const(numPointsL,numPointsA,grids%supportSPA(ixt)) 
-    real(kind=rk), allocatable :: values(:), ccpMat(:,:,:), eye(:,:)
+    real(kind=rk) :: scale
+    real(kind=rk), allocatable :: values(:), ccpMat(:,:,:), eye(:,:), const(:,:,:)
     real(kind=rk), allocatable  ::  GrossUtil(:,:), parameters(:), ccp(:), test(:)
     integer, save :: saveDim(2,numPointsL), lastixT = 0, unemp, div
     real(kind=rk), allocatable, save :: locinitialGuessRI(:,:)
     logical :: converged
     character (len=2000) :: text(2)
-    real(kind=rk), save::saveDiff
 
     !temp
     real(kind=rk), allocatable :: tempC1(:,:), tempC2(:,:)
     real(kind=rk) :: diff, lowestUtil
-    
+
     REAL(kind=rk) :: error
     LOGICAL :: logcheck
     ixa1 = 0
     lowestUtil = 0.0
     !If suffered unemployment shock then can't choose to work
     labourChoices=mod(ixy,2)*numPointsL+(1-mod(ixy,2))*1
-    allocate(maxA(labourChoices))
+    allocate(maxA(labourChoices), const(labourChoices,numPointsA,grids%supportSPA(ixt)))
     maxA(1) = numPointsA !default to all asset level possible
     do ixL = 0,(labourChoices-1),1           ! points of income choice
         ! Value of income and information for optimisation
@@ -1759,29 +1767,22 @@
     end do
     if (ixa1 > numPointsA) maxA(labourChoices) = numPointsA
     maxmaxA = maxval(maxA)
-    
-    allocate(tempC1(maxA(1),grids%supportSPA(ixt)))
-    tempC1 = const(1,1:maxA(1),:)
-    if (labourChoices==2) then
-        allocate(tempC2(maxA(2),grids%supportSPA(ixt)))
-        tempC2 = const(2,1:maxA(2),:)
-        !if (rank==0) write(*,*) max(maxval(tempC1),maxval(tempC2)) - min(minval(tempC1),minval(tempC2)) 
-        diff = max(maxval(tempC1),maxval(tempC2)) - min(minval(tempC1),minval(tempC2))
-        if (diff>saveDiff) then
-            saveDiff = diff
-            if (rank==0) write(*,*) saveDiff   
-        end if 
-    else
-        diff = maxval(tempC1) - minval(tempC1)
-        if (diff>saveDiff) then
-            saveDiff = diff
-            if (rank==0) write(*,*) saveDiff   
-        end if    
-    end if 
-    
-    const=exp(const)
-    
-    
+
+    !allocate(tempC1(maxA(1),grids%supportSPA(ixt)))
+    !tempC1 = const(1,1:maxA(1),:)
+    !if (labourChoices==2) then
+    !    allocate(tempC2(maxA(2),grids%supportSPA(ixt)))
+    !    tempC2 = const(2,1:maxA(2),:)
+    !    if (rank==0) write(*,*) max(maxval(tempC1),maxval(tempC2)) - min(minval(tempC1),minval(tempC2))
+    !    diff = max(maxval(tempC1),maxval(tempC2)) - min(minval(tempC1),minval(tempC2))
+    !else
+    !    if (rank==0) write(*,*) maxval(tempC1) - minval(tempC1)
+    !    diff = maxval(tempC1) - minval(tempC1)
+    !end if
+    scale = maxval(const)
+    const=exp(const-scale)
+
+
     dimD = sum(maxA)!labourChoices*(ixa1-1)
     dim = grids%supportSPA(ixt)*dimD !*labourChoices*(ixa1-1)
     allocate(values(dim+1),parameters(dim),ccp(dim),ccpMat(grids%supportSPA(ixt),labourChoices,maxmaxA), GrossUtil(dimD,grids%supportSPA(ixt)),test(dimD))
@@ -1895,7 +1896,7 @@
     !Calculate continuation value
     do i=1,grids%supportSPA(ixt)
         test= GrossUtil(:,i)
-        v(i) = log(sum(test))
+        v(i) = log(sum(test))+scale
     end do
 
     contains
@@ -1908,7 +1909,7 @@
     !output
     real(kind=rk), allocatable :: res(:)
     !local
-    !real(kind=hp) :: systemEq(dim),test(dim), loc!,grids%supportSPA(ixt)
+    real(kind=hp) :: systemEq(dim),test(dim), loc!,grids%supportSPA(ixt)
     integer:: d, y, locl, loca1, j
 
     allocate(res(dim))
@@ -1997,7 +1998,7 @@
     IMPLICIT NONE
     REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
     REAL(kind=rk), DIMENSION(size(x)) :: funcv
-    funcv = x - func(x)
+    !funcv = x - func(x)
     END FUNCTION funcv
     end subroutine
 
@@ -2373,7 +2374,18 @@
         !!get uniform random number
         CALL RANDOM_NUMBER(uniformRand)
         uniformRand = -0.5+uniformRand
-        do i = 1, dimEstimation+1
+
+        if (rank==0) write (*,*) "Guess ", 1
+        p(1,1) = params%nu
+        p(1,2) = params%beta
+        p(1,3) = params%gamma
+        p(1,4) = params%db(1)
+        p(1,5) = params%db(2)
+        p(1,6) = params%thetab
+        if (dimEstimation ==7) p(1,7) = params%lambda
+        y(1) = gmm_criteria(p(1,:)) !if (i .GE. 7)
+
+        do i = 2, dimEstimation+1
             if (rank==0) then
                 write (*,*) "Guess ", i
             end if
