@@ -87,6 +87,7 @@
         integer :: supportSPA(TendRI)
         !real (kind=rk) :: initialGuessRI(numPointsSPA+1,numPointsSPA)
         real (kind=rk) :: initialGuessRI(numPointsSPA*numPointsL*numPointsA+1,numPointsSPA*numPointsL*numPointsA)
+        real (kind=rk) :: logitShock(numSims,Tperiods)
     end type gridsType
 
     !Made allocatable to allow for very large arrays
@@ -135,7 +136,7 @@
         read (*,*) modelChoice
     end if
 #else
-    modelChoice = 3
+    modelChoice = 1
 #endif 
 
 #ifdef mpi

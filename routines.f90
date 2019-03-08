@@ -396,7 +396,7 @@
             tempEV = VecEV
             do testRank = 0, (procSize-1)
                 thisCoreStartTest = testrank*tasksPerCore + 1  + max(testrank + leftOverTasks - procsize,0)
-                thisCoreEndTest = (testrank+1)*tasksPerCore + max(rank + leftOverTasks +1 - procsize,0)
+                thisCoreEndTest = (testrank+1)*tasksPerCore + max(testrank + leftOverTasks +1 - procsize,0)
                 locVecSize = thisCoreEndTest - thisCoreStartTest + 1
                 allocate(LocV(locVecSize*otherDimV),Locpolicy(locVecSize*otherDimP),LocEV(locVecSize*otherDimV))
 
@@ -731,21 +731,21 @@
     real (kind=rk) :: startingA(numSims), startAIME, Aval,AIMEval, check, check1, check2, checkMax
     integer :: s, t, idxA(1), idxAIME(1), idxY(numSims), workAge
     integer :: seedIn, Lcube(8), typeSim
-    real (kind=rk) ::  uniformRand(numSims), ltemp, lbA1, EV1(numPointsA ,numAIME)
+    real (kind=rk) ::  ltemp, lbA1, EV1(numPointsA ,numAIME)
     INTEGER :: n, i, uniformInt(numSims), j
     !INTEGER, DIMENSION(:), ALLOCATABLE :: seed
     integer :: unemployed(numSims) !1 employed, 2 unemploeyed
     !type (locmodelObjectsType):: LocmodelObjects(2)
     type (modelObjectsType):: LocmodelObjects(2)
     real (kind=rk) :: LocEV(Tperiods+1,  numPointsType, numPointsA, numAIME, numPointsSPA,numPointsProd,2);
-    real (kind=rk) :: gridY(numPointsProd), Yval, logitShock(numSims,Tperiods), ccp(numPointsL*numPointsA), policy(numAIME, numpointsprod, numPointsL*numPointsA), ccpTemp(numPointsL*numPointsA)
+    real (kind=rk) :: gridY(numPointsProd), Yval, ccp(numPointsL*numPointsA), policy(numAIME, numpointsprod, numPointsL*numPointsA), ccpTemp(numPointsL*numPointsA)
     real (kind=rk) :: mat(numPointsL,numPointsA), cumsum
     integer :: idxa1, typesimOld
     character(len=1024) :: outFile
     integer :: SPA
 
     SPA = SPAin
-    call random_number(uniformrand)
+    !call random_number(uniformrand)
     do i = 1, numsims
         startinga(i) = grids%initialassets(i) !uniformrand(i)*numsims)+1
         if (startinga(i) < 0.0) startinga(i) = 0.0
@@ -757,7 +757,7 @@
     allocate(modelObjects%policy(numPointsA, numAIME, numPointsSPA, numPointsY,numPointsL,numPointsA))
     allocate(modelObjects%V(numPointsA, numAIME, numPointsSPA,numPointsY))
 
-    call RANDOM_NUMBER(logitShock)
+    
     checkMax = 0.0
     typesimOld = 4
     !write (*,*) 'b'
@@ -863,7 +863,7 @@
                 cumsum = 0.0
                 do i = 1,size(ccp)
                     cumsum=cumsum+ccp(i)
-                    if (cumsum > logitShock(s,t)) exit
+                    if (cumsum > grids%logitShock(s,t)) exit
                 end do
                 l(t,s) = 1- mod(i,2)
                 idxa1= (i-1)/2+1
@@ -2675,7 +2675,7 @@
     !!get uniform random number
     CALL RANDOM_NUMBER(grids%initialGuessRI)
 
-
+    call RANDOM_NUMBER(grids%logitShock)
 
     !if (rank==0) then
     !    !write (*,*) rank

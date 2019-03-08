@@ -48,6 +48,7 @@
     INTEGER(kind=4) :: iter
     real (kind=rk) :: gmmScorce
     real (kind=rk) :: indxrk
+    real (kind=rk) :: optLambda
 
 #ifdef mpi
     integer :: provided
@@ -136,21 +137,28 @@
     !params%thetab = 1.944448764319950E-002
 
          
-        params%nu =   0.236281327423160  !0.287177126203365 !0.866530785705649 ! 0.290307522834662 ! 0.287177078339264!
-        params%beta = 0.999986702072559 !0.985724876594556 !0.990655741245757 ! 0.985451393874388 !0.985724939013559!
-        params%gamma = 1.57082344698532 ! 2.31567977728987 !1.78141736803550  ! 2.34092202506161! 2.31567939133319!
-        params%db(1) = 0.887358618682115! 0.596815295617949 !0.590379814467926 ! 0.590379716068728!
-        params%db(2) = -2.865697889512581E-006!-4.224560477055699E-006!-1.274722676211178E-005!  -4.270610627570502E-006 !-4.224559772943942E-006 !
-        params%thetab = 1.963529386755248E-002 !2.894599836633410E-002!8.734191576465597E-002!  2.926152647601828E-002 !2.894599354187538E-002 !
-        !params%lambda =  7.804665289405568E-002
+        params%nu = 0.236302115158612!  0.236281327423160  !0.287177126203365 !0.866530785705649 ! 0.290307522834662 ! 0.287177078339264!
+        params%beta =  0.999961762412824   !0.999986702072559 !0.985724876594556 !0.990655741245757 ! 0.985451393874388 !0.985724939013559!
+        params%gamma =  1.57096164606611   !1.57082344698532 ! 2.31567977728987 !1.78141736803550  ! 2.34092202506161! 2.31567939133319!
+        params%db(1) = 0.887436687382750     !0.887358618682115! 0.596815295617949 !0.590379814467926 ! 0.590379716068728!
+        params%db(2) = -2.865950010026133E-006 !-2.865697889512581E-006!-4.224560477055699E-006!-1.274722676211178E-005!  -4.270610627570502E-006 !-4.224559772943942E-006 !
+        params%thetab = 1.963702135613103E-002 !1.963529386755248E-002 !2.894599836633410E-002!8.734191576465597E-002!  2.926152647601828E-002 !2.894599354187538E-002 !
+        params%lambda =  1.000087978748379E-003 ! 7.804665289405568E-002
         params%k=650000      
         
+ 
+       
+    
+     
+  
+ 
+  
        
  
   
     
     
-    params%lambda= 0.001!0.0000000001! 1.0!0.01!!!
+    !params%lambda= 0.001!0.0000000001! 1.0!0.01!!!
 
     call setupMisc(params,grids)
     if (fullLifeCycle) then
@@ -162,7 +170,7 @@
 #ifdef debugMPI
     if (rank==0) pause
 #endif    
-    action =2
+    action =0
     if (action .EQ. 0) then
         do typeSim = 1, numPointsType
             call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
@@ -195,17 +203,27 @@
         !p(1,6) =  2.259138287169178E-003 !2.894599836633410E-002!8.734191576465597E-002!  2.926152647601828E-002 !2.894599354187538E-002 !
         !p(1,7) =  0.001 ! 7.804665289405568E-002
 
-        p(1,1) = 0.240191353041616
-        p(1,2) =0.999477774429760
-        p(1,3) =  1.93680557456545
-        p(1,4) = 0.493786285559129
-        p(1,5) =  -3.533369493611974E-006
-        p(1,6) = 2.421007064408893E-002
-        p(1,7) = 0.836387480497043
+        p(1,1) = 0.236200045532760 !0.240191353041616
+        p(1,2) = 0.999995559030882  !0.999477774429760
+        p(1,3) = 1.57028307631512 ! 1.93680557456545
+        p(1,4) = 0.887053363134520  !0.493786285559129
+        p(1,5) = -2.864712075930465E-006 ! -3.533369493611974E-006
+        p(1,6) = 1.962853923390662E-002 !2.421007064408893E-002
+        optLambda =  9.996559952862711E-004 !0.836387480497043 
+                   
+         open (unit = 666, form="unformatted", file=trim(path) // 'guessP.txt', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
+         read (666) p
+         close (unit=666)
+         
+         open (unit = 667, form="unformatted", file=trim(path) // 'guessY.txt', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
+         read (667) Y
+         close (unit=667)         
+ 
+        optLambda = p(1,7)
         !Lambda = 0.436387480497043 is best!!!!
-        do indxrk = -0.4, 0.4, 0.1
-            p(1,7) = 0.836387480497043 + indxrk
-            if (rank==0) write (*,*), 'For lambda = ', p(1,7)
+        do indxrk = -0.3, 0.3, 0.1
+            p(1,7) = optLambda + indxrk*optLambda
+            if (rank==0) write (*,*), 'For lambda = ', p(1,7), indxrk
             gmmScorce =  gmm_criteria(p(1,:))
             if (rank==0) write (*,*), 'GMM Criteria is ', gmmScorce
         end do
@@ -282,18 +300,30 @@
             print '("Setting up initial guess for hilling climbing algorithm")'
         end if
 
-        call initialGuess(rank,params,grids,moments,weights,p,y)
+        !call initialGuess(rank,params,grids,moments,weights,p,y)
+         open (unit = 666, form="unformatted", file=trim(path) // 'guessP.txt', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
+         read (666) p
+         close (unit=666)
+         
+         open (unit = 667, form="unformatted", file=trim(path) // 'guessY.txt', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
+         read (667) Y
+         close (unit=667)
+#ifdef mpi
+        call mpi_barrier(mpi_comm_world, ierror)
+        if (ierror.ne.0) stop 'mpi problem180'
+#endif          
 
-        if (rank==0) open (unit = 211,file=trim(path) // 'guess2.txt', action='read', IOSTAT = ios) !open (unit=211, file='..\\out\guess2.txt', status='unknown', action='write')
-        call amoeba(p,y, 0.001_rk,gmm_criteria,iter,.TRUE.,0.0_rk) !0.0001_rk !0.001_rk!0.07_rk!0.0001054 !0.000000001_rk !
-        if (rank==0) close (unit=211)
+        !open (unit=201, form="unformatted", file=trim(path) // 'CombinedData', ACCESS="STREAM", action='write', IOSTAT = ios)
+        !open (unit=211, file='..\\out\guess2.txt', status='unknown', action='write')
+        call amoeba(p,y, 0.00001_rk,gmm_criteria,iter,.TRUE.,0.0_rk) !0.0001_rk!0.001_rk!0.0001_rk !0.001_rk!0.07_rk!0.0001054 !0.000000001_rk !
+        !if (rank==0) close (unit=211)
 
         if (rank==0) then
             print '("P = ",f6.3)',P(1,:)
             print '("Y = ",f16.3)',Y
             
             inquire (iolength=requiredl)  P(1,:)
-            open (unit = 201,file=trim(path) // 'params.txt', action='read', IOSTAT = ios)
+            open (unit = 201,file=trim(path) // 'params.txt',  status='unknown',recl=requiredl, action='write', IOSTAT = ios)
             !open (unit=201, file='..\\out\params.txt', status='unknown',recl=requiredl, action='write')
 
             write (201, * ) P(1,:)
@@ -352,7 +382,7 @@
     params%thetab = control(6)
     if (dimEstimation == 7) params%lambda = control(7)
     if (rank==0) then
-        write (211,*) "Calcualting GMM for",  control(1),  control(2),  control(3),  control(4),  control(5),  control(6)
+        !write (211,*) "Calcualting GMM for",  control(1),  control(2),  control(3),  control(4),  control(5),  control(6)
     end if
     gmm_criteria = gmm(params,grids,moments,weights) !*-1.0
 

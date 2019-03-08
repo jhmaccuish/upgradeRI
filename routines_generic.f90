@@ -1893,7 +1893,7 @@
     REAL(kind=rk) :: func
     END FUNCTION func
     END INTERFACE
-    INTEGER(kind=4), PARAMETER :: ITMAX=500 !1000
+    INTEGER(kind=4), PARAMETER :: ITMAX= 700 !2000 !500 !1000
     REAL(kind=rk), PARAMETER :: TINY=1.0D-10
     INTEGER(kind=4) :: ihi,ndim
     REAL(kind=rk), DIMENSION(size(p,2)) :: psum
@@ -1914,6 +1914,14 @@
     !!$OMP PARALLEL default(shared)
     !!$omp do
     do
+        if (rank==0) then
+            if (rank==0) open (unit = 666, form="unformatted", file=trim(path) // 'guessP.txt', status='replace', ACCESS="STREAM", action='write')         
+            if (rank==0) open (unit = 667, form="unformatted", file=trim(path) // 'guessY.txt', status='replace', ACCESS="STREAM", action='write')              
+            write (666) p
+            write (667) y
+            close (unit=666)
+            close (unit=667)
+        end if
         ilo=iminloc(y(:))
         ihi=imaxloc(y(:))
         ytmp=y(ihi)
@@ -1930,7 +1938,7 @@
             RETURN
         end if
         if (iter >= ITMAX) then
-            !write(*,*),  'ERROR: ITMAX exceeded in amoeba'
+            if (rank==0) write(*,*),  'ITMAX exceeded in amoeba'
             call swap_scalar(y(1),y(ilo))
             call swap_vector(p(1,:),p(ilo,:))
             return
