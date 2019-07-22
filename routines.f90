@@ -1,6 +1,7 @@
     module routines
     use Header
     use routines_generic
+    use bobyqa_module
 
     implicit none
     !#include "../globalMacros.txt"
@@ -169,7 +170,8 @@
     integer :: ixt, ixAIME, ixA, ixY, ixL, ixA1
     real (kind=rk) :: negV, A,A1, Y, lbA1, ubA1, AIME, EV1(numPointsA,numAIME), EV1SPA(numPointsA,numAIME,numPointsSPA), Va2, EV2(numPointsA,numAIME)! Agrid1(numPointsA)
     real (kind=rk) :: contEV(numPointsA, numAIME, numPointsSPA,numPointsY)
-    real (kind=rk) :: AIME1grid(numAIME), policyA1temp, negVtemp, realisedV(numPointsY), va, check, mat(numPointsSPA,numPointsL,numPointsA), checkA(numPointsA),  check2, checkA2(numPointsA)
+    real (kind=rk) :: AIME1grid(numAIME), policyA1temp, negVtemp, realisedV(numPointsY), va, check, mat(numPointsSPA,numPointsL,numPointsA), q(numPointsL,numPointsA), checkA(numPointsA)
+    real (kind=rk) :: uConst(numPointsSPA,numPointsL,numPointsA), check2, checkA2(numPointsA)
     real (kind=rk) :: temp(numPointsA, numAIME, numPointsSPA, numPointsY,numPointsL,numPointsA), poilcyL1(numPointsA,numPointsY), val1(numPointsA,numPointsY), EVPath(stopwrok-1)
     real (kind=rk) :: tempA(numPointsA, numAIME, numPointsY,numPointsA), tempL(numPointsA, numAIME, numPointsY), poilcyA1(numPointsA,numPointsY), poilcyA1wrk(numPointsA,numPointsY), poilcyA1dnt(numPointsA,numPointsY)
     real (kind=hp) :: mutualInfo(numPointsA,numPointsY), signal(numPointsSPA,numPointsA,numPointsY) ,totalP(numPointsA,numPointsY,numpointsA*numPointsL), ent(numPointsA,numPointsY), testSUM(5)
@@ -195,6 +197,8 @@
     !To large to be static object
     allocate(modelObjects%EV(numPointsA, numAIME, numPointsSPA,numPointsY))
     allocate(modelObjects%policy(numPointsA, numAIME, numPointsSPA, numPointsY,numPointsL,numPointsA))
+    allocate(modelObjects%q(numPointsA, numAIME, numPointsY,numPointsL,numPointsA))
+    allocate(modelObjects%u(numPointsA, numAIME, numPointsSPA, numPointsY,numPointsL,numPointsA))
     allocate(modelObjects%V(numPointsA, numAIME, numPointsSPA,numPointsY))
 
     !----------------------------------------------------------------------------------!
@@ -305,9 +309,10 @@
                                             minSPA = maxval((/ixt-Tretire+2,1/))
                                             mat=0.0
                                             call solvePeriodRI(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, TendRI, EV1SPA, &
-                                                mat(minSPA:numPointsSPA,:,:) ,modelObjects%V(ixA, ixAIME,minSPA:numPointsSPA,ixY) )
+                                                mat(minSPA:numPointsSPA,:,:) ,modelObjects%V(ixA, ixAIME,minSPA:numPointsSPA,ixY), q, uConst )
                                             modelObjects%policy(ixA,ixAIME, :,ixY,:,:) = mat
-
+                                            modelObjects%q(ixA,ixAIME, ixY,:,:) = q
+                                            modelObjects%u(ixA,ixAIME, :,ixY,:,:) = uConst
                                             !if (ixy==5 .AND. ixa ==6 .AND. ixAIME==1) then
                                             !    call solvePeriodRE(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, TendRI, EV1SPA(:,:,numPointsSPA), ixA1,ixl,Va)
                                             !    check = sum(mat(numPointsSPA,2,:))!sum(modelObjects%policy(ixt,typeSim,ixA,ixAIME, 11,ixY,:,:))
@@ -453,6 +458,20 @@
                 write (201)  modelObjects%EV
                 close( unit=201)
 
+                write (outFile, *), trim(trim(pathDataStore) // "qType"),typeSim,trim("Period"),ixt,".txt"
+                outfile=ADJUSTL(outfile)
+                inquire (iolength=requiredl)  modelObjects%q
+                open (unit=201,form="unformatted", file=outfile, status='unknown',recl=requiredl, action='write')
+                write (201)  modelObjects%q
+                close( unit=201)
+
+                write (outFile, *), trim(trim(pathDataStore) // "uType"),typeSim,trim("Period"),ixt,".txt"
+                outfile=ADJUSTL(outfile)
+                inquire (iolength=requiredl)  modelObjects%u
+                open (unit=201,form="unformatted", file=outfile, status='unknown',recl=requiredl, action='write')
+                write (201)  modelObjects%u
+                close( unit=201)                
+                
                 if (ixt < stopwrok .AND. intermediateToFile) then
                     !    write (format_numpeepcols_int,*),'(',numPointsY
                     !    format_numpeepcols_int = trim(format_numpeepcols_int) // 'E20.7E4)'
@@ -639,7 +658,7 @@
     call  linearinterp1(grids%AIMEgrid(ixType,ixP + 1, :),EV1, numAIME, AIME, VA1, 1, 1 )
     VB1 = params%thetab*((A1+params%K)**(1-params%gamma))/(1-params%gamma)
 
-    objectivefunc = utility(params,cons,L)/params%lambda + params%beta * ((1- grids%mortal(ixP))* VA1+grids%mortal(ixP)*VB1)
+    objectivefunc = utility(params,cons,L)/params%lambda + params%beta * ((1- grids%mortal(ixP+1))* VA1+grids%mortal(ixP+1)*VB1)
 
 
     end function
@@ -725,6 +744,8 @@
     real (kind=rk), intent(out) :: v(Tperiods, numSims)  !value
     integer, intent(out) :: a(Tperiods + 1,numSims) !this is the path at the start of each period, so we include the 'start' of death
     real (kind=rk), intent(out) :: AIME(Tperiods + 1,numSims)
+    
+    integer :: pos(7,numSims,1), prio(7,numSims,1)
 
     !local
     type (modelObjectsType) :: modelObjects
@@ -739,11 +760,11 @@
     type (modelObjectsType):: LocmodelObjects(2)
     real (kind=rk) :: LocEV(Tperiods+1,  numPointsType, numPointsA, numAIME, numPointsSPA,numPointsProd,2);
     real (kind=rk) :: gridY(numPointsProd), Yval, ccp(numPointsL*numPointsA), policy(numAIME, numpointsprod, numPointsL*numPointsA), ccpTemp(numPointsL*numPointsA)
-    real (kind=rk) :: mat(numPointsL,numPointsA), cumsum
+    real (kind=rk) :: mat(numPointsL,numPointsA), cumsum, posterior(numSims, numPointsSPA), prior(numSims, numPointsSPA), denom
     integer :: idxa1, typesimOld
     character(len=1024) :: outFile
-    integer :: SPA
-
+    integer :: SPA, requiredl
+    character (20) :: format_numpeepcols_int
     SPA = SPAin
     !call random_number(uniformrand)
     do i = 1, numsims
@@ -755,17 +776,23 @@
     !To large to be static object
     allocate(modelObjects%EV(numPointsA, numAIME, numPointsSPA,numPointsY))
     allocate(modelObjects%policy(numPointsA, numAIME, numPointsSPA, numPointsY,numPointsL,numPointsA))
+    allocate(modelObjects%u(numPointsA, numAIME, numPointsSPA, numPointsY,numPointsL,numPointsA))
+    allocate(modelObjects%q(numPointsA, numAIME, numPointsY,numPointsL,numPointsA))
     allocate(modelObjects%V(numPointsA, numAIME, numPointsSPA,numPointsY))
 
     
     checkMax = 0.0
     typesimOld = 4
     !write (*,*) 'b'
+    s=0
     do t = 1,tperiods,1                              ! loop through time periods for a particular individual
         if (counterFact == .TRUE. .AND. t==9) then
             !SPA = SPA + 1
         end if
+        
         do s = 1,numsims,1
+            !Initialise beliefs
+            if (modelChoice > 2 .AND. t==1) prior(s,:) = grids%posteriorSPA(1,:)
             !write (*,*) "sim ", s
             if (numpointstype == 1) then
                 typesim = 1
@@ -797,6 +824,26 @@
                     close( unit=201 )
                 end if
 
+                write (outFile, *), trim(trim(pathDataStore) // "qType"),typeSim,trim("Period"),t,".txt"
+                outfile=ADJUSTL(outfile)
+                !write (*,*) 'd', outFile
+                open (unit=201,form="unformatted", file=outfile, status='unknown', action='read')
+                read (201) modelObjects%q
+                
+                !i=19
+                write (outFile, *), trim(trim(pathDataStore) // "uType"),typeSim,trim("Period"),t,".txt"
+                outfile=ADJUSTL(outfile)
+                !write (*,*) 'd', outFile
+                open (unit=201,form="unformatted", file=outfile, status='unknown', action='read')
+                read (201) modelObjects%u
+                !stop
+                
+                if (delCache) then
+                    close( unit=201,  status='delete' )
+                else
+                    close( unit=201 )
+                end if                
+                
                 write (outFile, *), trim(trim(pathDataStore) // "EVType"),typeSim,trim("Period"),t,".txt"
                 outfile=ADJUSTL(outfile)
                 !write (*,*) 'e', outFile
@@ -812,6 +859,15 @@
                 LocmodelObjects(1)%policy =  modelObjects%policy(:,:,:,(/(i,i=1,numPointsY-1,2)/),:,:)
                 !write (*,*) 'g'
                 LocmodelObjects(2)%policy =  modelObjects%policy(:,:,:,(/(i,i=2,numPointsY,2)/),:,:)
+
+                LocmodelObjects(1)%u =  modelObjects%u(:,:,:,(/(i,i=1,numPointsY-1,2)/),:,:)
+                !write (*,*) 'g'
+                LocmodelObjects(2)%u =  modelObjects%u(:,:,:,(/(i,i=2,numPointsY,2)/),:,:)                
+                
+                LocmodelObjects(1)%q =  modelObjects%q(:,:,(/(i,i=1,numPointsY-1,2)/),:,:)
+                !write (*,*) 'g'
+                LocmodelObjects(2)%q =  modelObjects%q(:,:,(/(i,i=2,numPointsY,2)/),:,:)
+                
                 LocmodelObjects(1)%EV =  modelObjects%EV(:,:,:,(/(i,i=1,numPointsY-1,2)/))
                 LocmodelObjects(2)%EV =  modelObjects%EV(:,:,:,(/(i,i=2,numPointsY,2)/))
 
@@ -839,10 +895,10 @@
             idxaime=minloc(abs(aime(t, s)-grids%aimegrid(typesim,t,:)))
             do i=1,numPointsL
                 do j=1,numPointsA
-                    policy(:,:,j+(i-1)*numPointsA) = LocmodelObjects(unemployed(s))%policy(a(1, s) ,:,SPA,:,i,j)
+                    policy(:,:,j+(i-1)*numPointsA) = LocmodelObjects(unemployed(s))%policy(a(t, s) ,:,SPA,:,i,j)
                 end do
             end do
-            ccp =  reshape(LocmodelObjects(unemployed(s))%policy(a(1, s),idxaime(1),SPA,idxy(s),:,:),(/numPointsL*numPointsA/))
+            ccp =  reshape(LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),SPA,idxy(s),:,:),(/numPointsL*numPointsA/))
             check1 = abs(sum(ccp))
             y(t, s) = yex(t,s)
 
@@ -868,7 +924,21 @@
                 l(t,s) = 1- mod(i,2)
                 idxa1= (i-1)/2+1
                 a(t+1, s) = idxa1
-                mat = LocmodelObjects(unemployed(s))%policy(a(1, s),idxaime(1),SPA,idxy(s),:,:)
+                mat = LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),SPA,idxy(s),:,:)
+                if (modelChoice>2 .AND. t <8) then
+                    !ccp(i)
+                    do i =1,numPointsSPA
+                        !denom = &   !reshape(LocmodelObjects(unemployed(s))%p(a(t, s),idxaime(1),SPA,idxy(s),:,:),(/numPointsL*numPointsA/))
+                        !dot_product(reshape(LocmodelObjects(unemployed(s))%u(a(t, s),idxaime(1),i,idxy(s),:,:),(/numPointsL*numPointsA/)),reshape(LocmodelObjects(unemployed(s))%q(a(t, s),idxaime(1),idxy(s),:,:),(/numPointsL*numPointsA/)))
+                        posterior(s,i)=prior(s,i)*exp(LocmodelObjects(unemployed(s))%u(a(t, s),idxaime(1),i,idxy(s),l(t, s)+1,a(t+1, s)))!-denom !utility
+                                                      !LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),SPA,idxy(s),:,:)
+                        
+                        
+                    end do
+                    pos(t,s,:) = MAXLOC(posterior(s,:))
+                    prior(s,:) = matmul(params%spaTransMat,posterior(s,:))
+                    prio(t,s,:) = MAXLOC(prior(s,:))
+                end if 
             end if
 
             if (l(t,s) .eq. 0) then
@@ -885,6 +955,26 @@
     end do! s
     !write (*,*) 'no'
     if (checkMax > 0.00001) write (*,*), "Larege Error = ", checkMax
+    
+    write (outFile, *), trim(trim(path) // "posdata.txt")
+    outfile=ADJUSTL(outfile)
+    write (format_numpeepcols_int,*),'(',numSims
+    format_numpeepcols_int = trim(format_numpeepcols_int) // 'I2)'
+    inquire (iolength=requiredl)  transpose(pos(:,:,1))
+    open (unit=212, file=outFile, status='unknown',recl=requiredl, action='write')
+    write (212,format_numpeepcols_int  ) transpose(pos(:,:,1))
+    close( unit=212)
+
+     
+    write (outFile, *), trim(trim(path) // "pridata.txt")
+    outfile=ADJUSTL(outfile)
+    write (format_numpeepcols_int,*),'(',numSims
+    format_numpeepcols_int = trim(format_numpeepcols_int) // 'I2)'
+    inquire (iolength=requiredl)  transpose(prio(:,:,1))
+    open (unit=212, file=outFile, status='unknown',recl=requiredl, action='write')
+    write (212,format_numpeepcols_int  ) transpose(prio(:,:,1))
+    close( unit=212)   
+    
     !write (*,*) "Starting A ", sum(startinga)/size(startinga)
     !write (*,*) "Sim Start A ", sum(grids%Agrid(1,1,a(1,:)))/real(numSims,rk)
     end subroutine
@@ -972,12 +1062,6 @@
     real (kind=rk) :: gmm
 
     !local
-    type (modelObjectsType) :: modelObjects
-    !real (kind=rk) :: V(numPointsType,Tperiods+1, numPointsA, numPointsY, numAIME)
-    !real (kind=rk) :: policyA1(numPointsType,Tperiods, numPointsA, numPointsY, numAIME)
-    !real (kind=rk) :: policyC(numPointsType,Tperiods, numPointsA, numPointsY, numAIME)
-    !integer :: policyL(numPointsType,Tperiods, numPointsA, numPointsY, numAIME)
-    !real (kind=rk) :: EV(numPointsType,Tperiods+1, numPointsA, numPointsY, numAIME)
     real (kind=rk) :: ypath(Tperiods, numSims) !income
     real (kind=rk) :: cpath(Tperiods, numSims)  !consumption
     integer :: lpath(Tperiods, numSims) !labour supply
@@ -1694,7 +1778,7 @@
     !!solve period
     !! when RI is imporant
     ! ---------------------------------------------------------------------------------------------------------!
-    subroutine solvePeriodRI(params, grids, ixy, ixA, ixAIME ,ixt,ixType,spa,  EV1, ccpOut, v)
+    subroutine solvePeriodRI(params, grids, ixy, ixA, ixAIME ,ixt,ixType,spa,  EV1, ccpOut, v, q, uConst)
     implicit none
 
     !input
@@ -1704,7 +1788,7 @@
     integer, intent(in) :: ixt,ixType,ixa,ixAIME,ixy, spa
 
     !!output
-    real(kind=rk), intent(out) :: ccpOut(:,:,:), v(:)
+    real(kind=rk), intent(out) :: ccpOut(:,:,:), v(:), q(:,:), uConst(:,:,:)
     !local
     !integer, parameter :: hp = selected_real_kind(16)
     integer :: ixl,  ixA1, A1, i, j, iter, dim, dimD ,K, labourChoices, offset, testInt, maxmaxA
@@ -1748,6 +1832,7 @@
         do ixA1 = 1, numPointsA
             if (grids%Agrid(ixType,ixt+1, ixA1) > ubA1) then
                 const(ixl+1,ixa1:numPointsA,:) = -huge(const(ixl+1,ixa1,1))
+                uConst(:,ixl+1,ixa1:numPointsA) = -huge(const(ixl+1,ixa1,1))
                 maxA(ixl+1) = ixa1 - 1
                 exit
             end if
@@ -1759,11 +1844,14 @@
                 EVloc =  (1-params%p)*EV1(ixA1,:,numPointsSPA-grids%supportSPA(ixt)+i)+params%p*EV1(ixA1,:,numPointsSPA-grids%supportSPA(ixt)+i+1)
                 const(ixl+1,ixa1,i) = objectivefunc(params, grids,grids%Agrid(ixType,ixt+1, ixA1), A, Y,ixL,ixt,ixType, AIME,EVloc)
                 !if (const(ixl+1,ixa1,i) <lowestUtil) lowestUtil = const(ixl+1,ixa1,i)
+                uConst(numPointsSPA-grids%supportSPA(ixt)+i+1,ixl+1,ixa1) = const(ixl+1,ixa1,i)
             end do
             EVloc =  EV1(ixA1,:,numPointsSPA)
             const(ixl+1,ixa1,i) = objectivefunc(params, grids,grids%Agrid(ixType,ixt+1, ixA1), A, Y,ixL,ixt,ixType, AIME,EVloc)
+            uConst(numPointsSPA-grids%supportSPA(ixt)+i+1,ixl+1,ixa1) = const(ixl+1,ixa1,i)
             !if (const(ixl+1,ixa1,i) < lowestUtil) lowestUtil = const(ixl+1,ixa1,i)
         end do
+        
     end do
     if (ixa1 > numPointsA) maxA(labourChoices) = numPointsA
     maxmaxA = maxval(maxA)
@@ -1879,6 +1967,13 @@
         offset = offset+saveDim(unemp,i)
     end do
     ccpOut(1:grids%supportSPA(ixt),1:labourChoices,1:maxmaxA)=ccpMat
+    !Get defaults actiosn
+    do i=1,labourChoices
+        do j =1,maxmaxA
+            q(i,j) = dot_product(ccpOut(:,i,j),grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA))
+        end do
+    end do    
+    
     do i=1,grids%supportSPA(ixt)
         checkOther(i) = sum(ccpOut(i,:,:))
         !write (*,*) checkSave(i), checkOther(i)
@@ -2390,7 +2485,7 @@
                 write (*,*) "Guess ", i
             end if
             p(i,1) = params%nu*(1+uniformRand(i))
-            p(i,2) = (0.95+0.1*uniformRand(i))!params%beta*(1+uniformRand(i))
+            p(i,2) = (0.985+0.1*uniformRand(i))!params%beta*(1+uniformRand(i))
             p(i,3) = params%gamma*(1+uniformRand(i))
             p(i,4) = params%db(1)*(1+uniformRand(i))
             p(i,5) = params%db(2)*(1+uniformRand(i))
@@ -2662,6 +2757,14 @@
             end if
         end do
     end if
+     params%spaTransMat = 0.0
+    
+    do i=1,numPointsSPA  -1
+             params%spaTransMat(i,i) = 1.0 - params%p
+             params%spaTransMat(i,i+1) = params%p
+    end do
+    params%spaTransMat(numPointsSPA,numPointsSPA) = 1.0
+    params%spaTransMat = transpose(params%spaTransMat)
     !seedIn =
 
 

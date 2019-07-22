@@ -1884,7 +1884,9 @@
     REAL(kind=rk), INTENT(IN) :: ftol,abtol
     REAL(kind=rk), DIMENSION(:), INTENT(INOUT) :: y
     REAL(kind=rk), DIMENSION(:,:), INTENT(INOUT) :: p
+    real(kind=rk):: time
     logical,intent(in) :: show
+    
     INTERFACE
     FUNCTION func(x)
     use header
@@ -1893,6 +1895,7 @@
     REAL(kind=rk) :: func
     END FUNCTION func
     END INTERFACE
+    
     INTEGER(kind=4), PARAMETER :: ITMAX= 700 !2000 !500 !1000
     REAL(kind=rk), PARAMETER :: TINY=1.0D-10
     INTEGER(kind=4) :: ihi,ndim
@@ -1903,6 +1906,7 @@
     SUBROUTINE amoeba_private
     IMPLICIT NONE
     INTEGER(kind=4) :: i,ilo,inhi
+    integer :: c2
     REAL(kind=rk) :: rtol,ysave,ytry,ytmp
     IF((size(p,2) == size(p,1) - 1) .and. (size(p,2) == size(y) -1))THEN
         ndim = size(y) - 1
@@ -1915,12 +1919,17 @@
     !!$omp do
     do
         if (rank==0) then
-            if (rank==0) open (unit = 666, form="unformatted", file=trim(path) // 'guessP.txt', status='replace', ACCESS="STREAM", action='write')         
-            if (rank==0) open (unit = 667, form="unformatted", file=trim(path) // 'guessY.txt', status='replace', ACCESS="STREAM", action='write')              
+            if (rank==0) open (unit = 666, form="unformatted", file=trim(path) // 'guessP', status='replace', ACCESS="STREAM", action='write')         
+            if (rank==0) open (unit = 667, form="unformatted", file=trim(path) // 'guessY', status='replace', ACCESS="STREAM", action='write')              
             write (666) p
             write (667) y
             close (unit=666)
             close (unit=667)
+            CALL SYSTEM_CLOCK(c2)
+            write (*,*) (c2-c1)/rate
+            if ((c2-c1)/rate >300) stop
+            !call cpu_time(time)
+            !if (time-timeHack >300) stop
         end if
         ilo=iminloc(y(:))
         ihi=imaxloc(y(:))

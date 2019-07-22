@@ -16,6 +16,7 @@
 
     use Header
     use routines
+    use bobyqa_module
 
     implicit none
 
@@ -49,6 +50,11 @@
     real (kind=rk) :: gmmScorce
     real (kind=rk) :: indxrk
     real (kind=rk) :: optLambda
+    logical:: recal = .TRUE.
+    logical:: NM = .FALSE.
+    logical :: file_exists
+    real (kind=rk), allocatable :: x(:), xl(:), xu(:)
+    real (kind=rk) :: rhobeg, rhoend
 
 #ifdef mpi
     integer :: provided
@@ -58,7 +64,7 @@
     !call chdir( '..' )
     !CALL getcwd(cwd)
     !WRITE(*,*) TRIM(cwd)
-
+    !call cpu_time(timeHack)
     call cpu_time(start)
 
 #ifdef mpi    
@@ -77,8 +83,12 @@
 #endif
 
     call setModel
-    allocate(y(dimEstimation+1), p(dimEstimation+1,dimEstimation))
-
+    if (NM) then
+        allocate(y(dimEstimation+1), p(dimEstimation+1,dimEstimation))
+    else
+        allocate(x(dimEstimation), xl(dimEstimation), xu(dimEstimation))
+        rhobeg = 0.1
+    end if
     params%r= 0.02
 
     params%percentCons = 0.0 !0.1
@@ -120,45 +130,55 @@
     params%tol = 1e-10
     params%minCons = 1e-5
 
-    params%nu =   0.287177126203365 ! 0.290307522834662 ! 0.287177078339264!
-    params%beta = 0.985724876594556 ! 0.985451393874388 !0.985724939013559!
-    params%gamma =  2.31567977728987 ! 2.34092202506161! 2.31567939133319!
-    params%db(1) =  0.590379814467926 !0.596815295617949 ! 0.590379716068728!
-    params%db(2) = -4.224560477055699E-006! -4.270610627570502E-006 !-4.224559772943942E-006 !
-    params%thetab =  2.894599836633410E-002! 2.926152647601828E-002 !2.894599354187538E-002 !
-    params%k=650000
+    params%nu = 0.236302115158612!  0.236281327423160  !0.287177126203365 !0.866530785705649 ! 0.290307522834662 ! 0.287177078339264!
+    params%beta =  0.999961762412824   !0.999986702072559 !0.985724876594556 !0.990655741245757 ! 0.985451393874388 !0.985724939013559!
+    params%gamma = 1.57096164606611   !1.57082344698532 ! 2.31567977728987 !1.78141736803550  ! 2.34092202506161! 2.31567939133319!
+    params%db(1) = 0.887436687382750     !0.887358618682115! 0.596815295617949 !0.590379814467926 ! 0.590379716068728!
+    params%db(2) = -2.865950010026133E-006 !-2.865697889512581E-006!-4.224560477055699E-006!-1.274722676211178E-005!  -4.270610627570502E-006 !-4.224559772943942E-006 !
+    params%thetab = 100! 4.963702135613103E-001 !1.963529386755248E-002 !2.894599836633410E-002!8.734191576465597E-002!  2.926152647601828E-002 !2.894599354187538E-002 !
+    params%lambda = 1.000087978748379E-003 !1.000087978748379E-003 ! 1.000087978748379E-010  7.804665289405568E-002 ! !
+    params%k=650000*(101.9/250.1)
 
-    
-    !params%nu = 0.233985260541000       
-    !params%beta = 0.999690531106298      
-    !params%gamma = 1.55555894964362     
-    !params%db(1) = 0.878735699727095      
-    !params%db(2) = -2.837850432880502E-006 
-    !params%thetab = 1.944448764319950E-002
-
-         
-        params%nu = 0.236302115158612!  0.236281327423160  !0.287177126203365 !0.866530785705649 ! 0.290307522834662 ! 0.287177078339264!
-        params%beta =  0.999961762412824   !0.999986702072559 !0.985724876594556 !0.990655741245757 ! 0.985451393874388 !0.985724939013559!
-        params%gamma =  1.57096164606611   !1.57082344698532 ! 2.31567977728987 !1.78141736803550  ! 2.34092202506161! 2.31567939133319!
-        params%db(1) = 0.887436687382750     !0.887358618682115! 0.596815295617949 !0.590379814467926 ! 0.590379716068728!
-        params%db(2) = -2.865950010026133E-006 !-2.865697889512581E-006!-4.224560477055699E-006!-1.274722676211178E-005!  -4.270610627570502E-006 !-4.224559772943942E-006 !
-        params%thetab = 1.963702135613103E-002 !1.963529386755248E-002 !2.894599836633410E-002!8.734191576465597E-002!  2.926152647601828E-002 !2.894599354187538E-002 !
-        params%lambda =  1.000087978748379E-003 ! 7.804665289405568E-002
-        params%k=650000      
-        
- 
-       
-    
-     
-  
- 
-  
-       
- 
-  
-    
-    
+    params%nu =  0.287660991152824
+    params%beta =  0.986015640574392
+    params%gamma = 2.31958132724180
+    params%db(1) = 0.591374529222171
+    params%db(2) = -4.231678246672807E-006
+    params%thetab = 700000000 !2.899476882946300E-002
+    !historic excahnge rate 1.657347 taken from https://www.ofx.com/en-gb/forex-news/historical-exchange-rates/yearly-average-rates/
+    params%k= 215000*1.657347*(101.9/162.9)!from De Nardi, French, Jones
     !params%lambda= 0.001!0.0000000001! 1.0!0.01!!!
+
+    !params%nu = 0.654644998229734
+    !params%beta = 0.999971503624377
+    !params%gamma = 5.36050167208248
+    !params%db(1) =  0.0768547812997216
+    !params%db(2) = -2.482001888067050E-007
+    !params%thetab = 1000*1.700627283676143E-002
+    if (NM) then
+
+    else
+        params%BNDnu(1) =  0.1
+        params%BNDnu(2) =  0.7
+        params%BNDbeta(1) =  0.85
+        params%BNDbeta(2) =  1.0
+        params%BNDgamma(1) = 1.1
+        params%BNDgamma(2) = 7
+        params%BNDdb1(1) = 0.1
+        params%BNDdb1(2) = 1.0
+        params%BNDdb2(1) = -4.231678246672807E-004
+        params%BNDdb2(2) = -4.231678246672807E-008
+        params%BNDthetab(1) = 0.01*700000000
+        params%BNDthetab(2) = 100.0*700000000
+
+        x(1) = (params%nu - params%BNDnu(1))/(params%BNDnu(2)-params%BNDnu(1))
+        x(2) = (params%beta - params%BNDbeta(1))/(params%BNDbeta(2)-params%BNDbeta(1))
+        x(3) = (params%gamma - params%BNDgamma(1))/(params%BNDgamma(2)-params%BNDgamma(1))
+        x(4) = (params%db(1) - params%BNDdb1(1))/(params%BNDdb1(2)-params%BNDdb1(1))
+        x(5) = (params%db(2) - params%BNDdb2(1))/(params%BNDdb2(2)-params%BNDdb2(1))
+        x(6) = (params%thetab -  params%BNDthetab(1))/(params%BNDthetab(2)-params%BNDthetab(1))
+    end if
+
 
     call setupMisc(params,grids)
     if (fullLifeCycle) then
@@ -169,9 +189,21 @@
 
 #ifdef debugMPI
     if (rank==0) pause
+#endif
+
+#ifdef _WIN64
+    if (rank == 0) then
+        write (*,*) "Press 1 to check GMM values, 2 for single run, 3 to estimate"
+        read (*,*) action
+    end if
+#ifdef mpi
+    call MPI_Bcast( action, 1, MPI_INTEGER ,0, mpi_comm_world, ierror)
+    if (ierror.ne.0) stop 'mpi problem171'
+#endif       
+#else
+    action =3
 #endif    
-    action =0
-    if (action .EQ. 0) then
+    if (action .EQ. 1) then
         do typeSim = 1, numPointsType
             call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
         end do
@@ -188,20 +220,7 @@
         close (unit=1002)
         close (unit=1003)
         close (unit=1004)
-        p(1,1)=   0.287177126203365 !0.287177126203365 ! 0.290307522834662 ! 0.287177078339264!
-        p(1,2) =  0.985724876594556     ! 0.985724876594556 ! 0.985451393874388 !0.985724939013559!
-        p(1,3) =   2.31567977728987  !2.31567977728987 ! 2.34092202506161! 2.31567939133319!
-        p(1,4) =   0.590379814467926  !0.590379814467926 !0.596815295617949 ! 0.590379716068728!
-        p(1,5) = -4.224560477055699E-006 !-4.224560477055699E-006! -4.270610627570502E-006 !-4.224559772943942E-006 !
-        p(1,6) =  2.894599836633410E-002 !2.894599836633410E-002! 2.926152647601828E-002 !2.894599354187538E-002 !
 
-        !p(1,1) =  2.241321348790637E-002 !0.287177126203365 !0.866530785705649 ! 0.290307522834662 ! 0.287177078339264!
-        !p(1,2)=  0.975935121023040 ! 0.985724876594556 !0.990655741245757 ! 0.985451393874388 !0.985724939013559!
-        !p(1,3) =  0.180731055791926 ! 2.31567977728987 !1.78141736803550  ! 2.34092202506161! 2.31567939133319!
-        !p(1,4) =  4.607716845543490E-002 ! 0.596815295617949 !0.590379814467926 ! 0.590379716068728!
-        !p(1,5) =  -3.297128051827123E-007 !-4.224560477055699E-006!-1.274722676211178E-005!  -4.270610627570502E-006 !-4.224559772943942E-006 !
-        !p(1,6) =  2.259138287169178E-003 !2.894599836633410E-002!8.734191576465597E-002!  2.926152647601828E-002 !2.894599354187538E-002 !
-        !p(1,7) =  0.001 ! 7.804665289405568E-002
 
         p(1,1) = 0.236200045532760 !0.240191353041616
         p(1,2) = 0.999995559030882  !0.999477774429760
@@ -209,16 +228,16 @@
         p(1,4) = 0.887053363134520  !0.493786285559129
         p(1,5) = -2.864712075930465E-006 ! -3.533369493611974E-006
         p(1,6) = 1.962853923390662E-002 !2.421007064408893E-002
-        optLambda =  9.996559952862711E-004 !0.836387480497043 
-                   
-         open (unit = 666, form="unformatted", file=trim(path) // 'guessP.txt', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
-         read (666) p
-         close (unit=666)
-         
-         open (unit = 667, form="unformatted", file=trim(path) // 'guessY.txt', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
-         read (667) Y
-         close (unit=667)         
- 
+        optLambda =  9.996559952862711E-004 !0.836387480497043
+
+        open (unit = 666, form="unformatted", file=trim(path) // 'guessP.txt', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
+        read (666) p
+        close (unit=666)
+
+        open (unit = 667, form="unformatted", file=trim(path) // 'guessY.txt', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
+        read (667) Y
+        close (unit=667)
+
         optLambda = p(1,7)
         !Lambda = 0.436387480497043 is best!!!!
         do indxrk = -0.3, 0.3, 0.1
@@ -227,23 +246,13 @@
             gmmScorce =  gmm_criteria(p(1,:))
             if (rank==0) write (*,*), 'GMM Criteria is ', gmmScorce
         end do
-    else if (action .EQ. 1) then
-        params%nu =   0.236281327423160  !0.287177126203365 !0.866530785705649 ! 0.290307522834662 ! 0.287177078339264!
-        params%beta = 0.999986702072559 !0.985724876594556 !0.990655741245757 ! 0.985451393874388 !0.985724939013559!
-        params%gamma = 1.57082344698532 ! 2.31567977728987 !1.78141736803550  ! 2.34092202506161! 2.31567939133319!
-        params%db(1) = 0.887358618682115! 0.596815295617949 !0.590379814467926 ! 0.590379716068728!
-        params%db(2) = -2.865697889512581E-006!-4.224560477055699E-006!-1.274722676211178E-005!  -4.270610627570502E-006 !-4.224559772943942E-006 !
-        params%thetab = 1.963529386755248E-002 !2.894599836633410E-002!8.734191576465597E-002!  2.926152647601828E-002 !2.894599354187538E-002 !
-        !params%lambda =  7.804665289405568E-002
-        params%k=650000
-            
-       
+    else if (action .EQ. 2) then
 
         do typeSim = 1, numPointsType
             call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
         end do
 
-        call solveValueFunction( params, grids, .TRUE., .TRUE. )
+        if (recal) call solveValueFunction( params, grids, .TRUE., .TRUE. )
         !simulate
 #ifdef mpi
         call mpi_barrier(mpi_comm_world, ierror)
@@ -253,7 +262,7 @@
             delCache = .FALSE.
             if (modelChoice>1) then
                 if (counterFact) then
-                    call simWithUncer(params, grids, grids%Simy, cpath, apath, vpath, lpath, ypath, AIME, 1, .TRUE. ) !5
+                    call simWithUncer(params, grids, grids%Simy, cpath, apath, vpath, lpath, ypath, AIME, 1, .FALSE. ) !5
                     call writetofile(grids,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
                     call writetofileByType(grids,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
                 else
@@ -296,41 +305,68 @@
         close (unit=1003)
         close (unit=1004)
 
-        if (rank==0) then
-            print '("Setting up initial guess for hilling climbing algorithm")'
-        end if
+        if (NM)   then
+            if (rank==0) then
+                print '("Setting up initial guess for hilling climbing algorithm")'
+            end if
 
-        !call initialGuess(rank,params,grids,moments,weights,p,y)
-         open (unit = 666, form="unformatted", file=trim(path) // 'guessP.txt', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
-         read (666) p
-         close (unit=666)
-         
-         open (unit = 667, form="unformatted", file=trim(path) // 'guessY.txt', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
-         read (667) Y
-         close (unit=667)
+#ifdef _WIN64 
+            if (rank == 0) then
+                write (*,*) "Press 1 to load, 2 to do fresh"
+                read (*,*) action
+            end if
 #ifdef mpi
-        call mpi_barrier(mpi_comm_world, ierror)
-        if (ierror.ne.0) stop 'mpi problem180'
+            call MPI_Bcast( action, 1, MPI_INTEGER ,0, mpi_comm_world, ierror)
+            if (ierror.ne.0) stop 'mpi problem171'
+#endif  
+
+            if (action == 1) then
+                open (unit = 666, form="unformatted", file=trim(path) // 'guessP', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
+                read (666) p
+                close (unit=666)
+
+                open (unit = 667, form="unformatted", file=trim(path) // 'guessY', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
+                read (667) Y
+                close (unit=667)
+            else
+                call initialGuess(rank,params,grids,moments,weights,p,y)
+            end if
+#else
+            call initialGuess(rank,params,grids,moments,weights,p,y)
+#endif            
+
+
+#ifdef mpi
+            call mpi_barrier(mpi_comm_world, ierror)
+            if (ierror.ne.0) stop 'mpi problem180'
 #endif          
 
-        !open (unit=201, form="unformatted", file=trim(path) // 'CombinedData', ACCESS="STREAM", action='write', IOSTAT = ios)
-        !open (unit=211, file='..\\out\guess2.txt', status='unknown', action='write')
-        call amoeba(p,y, 0.00001_rk,gmm_criteria,iter,.TRUE.,0.0_rk) !0.0001_rk!0.001_rk!0.0001_rk !0.001_rk!0.07_rk!0.0001054 !0.000000001_rk !
-        !if (rank==0) close (unit=211)
+            !open (unit=201, form="unformatted", file=trim(path) // 'CombinedData', ACCESS="STREAM", action='write', IOSTAT = ios)
+            !open (unit=211, file='..\\out\guess2.txt', status='unknown', action='write')
+            call amoeba(p,y, 0.00001_rk,gmm_criteria,iter,.TRUE.,0.0_rk) !0.0001_rk!0.001_rk!0.0001_rk !0.001_rk!0.07_rk!0.0001054 !0.000000001_rk !
+            !if (rank==0) close (unit=211)
 
-        if (rank==0) then
-            print '("P = ",f6.3)',P(1,:)
-            print '("Y = ",f16.3)',Y
-            
-            inquire (iolength=requiredl)  P(1,:)
-            open (unit = 201,file=trim(path) // 'params.txt',  status='unknown',recl=requiredl, action='write', IOSTAT = ios)
-            !open (unit=201, file='..\\out\params.txt', status='unknown',recl=requiredl, action='write')
+            if (rank==0) then
+                print '("P = ",f6.3)',P(1,:)
+                print '("Y = ",f16.3)',Y
 
-            write (201, * ) P(1,:)
+                inquire (iolength=requiredl)  P(1,:)
+                open (unit = 201,file=trim(path) // 'params.txt',  status='unknown',recl=requiredl, action='write', IOSTAT = ios)
+                !open (unit=201, file='..\\out\params.txt', status='unknown',recl=requiredl, action='write')
 
-            close (unit=201)
+                write (201, * ) P(1,:)
 
-            print '("Generating files")'
+                close (unit=201)
+
+                print '("Generating files")'
+            end if
+        else
+            xl = 0.0
+            xu = 1.0
+            rhoend = 0.00001_rk
+            INQUIRE(file=trim(path) // 'location', EXIST=file_exists)
+            if (rank==0) write(*,*) file_exists
+            call bobyqa (dimEstimation, 2*dimEstimation+1, x, xl, xu, rhobeg, rhoend, 2, 2000, func, .TRUE., file_exists)
         end if
 
         call solveValueFunction( params, grids, .FALSE., .FALSE. )
@@ -387,5 +423,21 @@
     gmm_criteria = gmm(params,grids,moments,weights) !*-1.0
 
     end function
+
+    subroutine func (n, x, f)  !! calfun interface
+    implicit none
+    integer,intent(in)               :: n
+    real(rk),dimension(:),intent(in) :: x
+    real(rk),intent(out)             :: f
+    params%nu = params%BNDnu(1)+x(1)*(params%BNDnu(2)-params%BNDnu(1))
+    params%beta = params%BNDbeta(1)+x(2)*(params%BNDbeta(2)-params%BNDbeta(1))
+    params%gamma = params%BNDgamma(1)+ x(3)*(params%BNDgamma(2)-params%BNDgamma(1))
+    params%db(1)= params%BNDdb1(1)+x(4)*(params%BNDdb1(2)-params%BNDdb1(1))
+    params%db(2)= params%BNDdb2(1)+x(5)*(params%BNDdb2(2)-params%BNDdb2(1))
+    params%thetab = params%BNDthetab(1)+x(6)*(params%BNDthetab(2)-params%BNDthetab(1))
+    if (n == 7) params%lambda = x(7)
+
+    f = gmm(params,grids,moments,weights) !*-1.0
+    end subroutine func
 
     end program Console1

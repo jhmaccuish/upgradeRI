@@ -10,9 +10,9 @@
 #ifdef _WIN64      
     integer, parameter :: numPointsA = 30!10!30!100!50!
 #else
-    integer, parameter :: numPointsA = 60!10!30!100!50!
+    integer, parameter :: numPointsA = 30!120!10!30!100!50!
 #endif 
-    
+
     integer, parameter :: numPointsProd = PROD_SIZE !5!10 !
     integer, parameter :: numPointsY = 2*numPointsProd !20
     integer, parameter :: numAIME = 8!numPointsA  !10 !5
@@ -67,6 +67,14 @@
         real (kind=rk) :: lambda
         real (kind=rk) :: percentCons
         real (kind=rk) :: utlityShifter
+        real (kind=rk) :: spaTransMat(numPointsSPA,numPointsSPA)
+        !bound
+        real (kind=rk) :: BnDnu(2)
+        real (kind=rk) :: BnDbeta(2)
+        real (kind=rk) :: BnDgamma(2)
+        real (kind=rk) :: BnDdb1(2)
+        real (kind=rk) :: BnDdb2(2)
+        real (kind=rk) :: BnDthetab(2)
     end type structparamstype
 
     type gridsType
@@ -90,22 +98,12 @@
         real (kind=rk) :: logitShock(numSims,Tperiods)
     end type gridsType
 
-    !Made allocatable to allow for very large arrays
-    !type modelObjectsType
-    !    real (kind=rk):: V(numPointsA, numAIME, numPointsSPA,numPointsY)
-    !    real (kind=rk) :: policy(numPointsA, numAIME, numPointsSPA, numPointsY,numPointsL,numPointsA)
-    !    real (kind=rk) :: EV(numPointsA, numAIME, numPointsSPA,numPointsY)
-    !end type modelObjectsType
-
-    !type locmodelObjectsType
-    !    real (kind=rk):: V(numPointsA, numAIME, numPointsSPA,numPointsY/2)
-    !    real (kind=rk) :: policy(numPointsA, numAIME, numPointsSPA, numPointsY/2,numPointsL,numPointsA)
-    !    real (kind=rk) :: EV(numPointsA, numAIME, numPointsSPA,numPointsY/2)
-    !end type locmodelObjectsType
 
     type modelObjectsType
         real (kind=rk), allocatable :: V(:, :, :,:)
         real (kind=rk), allocatable :: policy(:, :, :, :,:,:)
+        real (kind=rk), allocatable :: u(:, :, :, :,:,:)
+        real (kind=rk), allocatable :: q(:, :, :, :,:)
         real (kind=rk), allocatable :: EV(:, :, :,:)
     end type modelObjectsType
 
@@ -121,6 +119,10 @@
     logical, parameter :: fullLifeCycle = .FALSE.
     !logical, parameter :: intermediateToFile = .FALSE.
 
+    real (kind=rk), protected :: timeHack
+    REAL (kind=rk), protected :: rate
+    INTEGER, protected  :: c1,c2,cr,cm
+
     contains
     subroutine setModel
     implicit none
@@ -128,6 +130,11 @@
 #ifdef mpi
     include 'mpif.h'
 #endif 
+    ! First initialize the system_clock
+    CALL system_clock(count_rate=cr)
+    CALL system_clock(count_max=cm)
+    rate = REAL(cr)
+    CALL SYSTEM_CLOCK(c1)
 
 #ifdef _WIN64
     if (rank == 0) then
@@ -146,7 +153,7 @@
 
 
 
-select case(modelChoice)
+    select case(modelChoice)
     case(1)
         EndPeriodRI = 1
 #ifdef _WIN64
@@ -166,7 +173,7 @@ select case(modelChoice)
         pathDataStore = "/scratch/scratch/uctphen/policyFuncsRE/"
         path = "/scratch/scratch/uctphen/outRE/"
 #endif 
-    case default
+        case default
         EndPeriodRI = TendRI
         uncerRE = .FALSE.
 #ifdef _WIN64
