@@ -23,8 +23,6 @@
     !  * Jacob Williams, July 2015 : refactoring of the code into modern Fortran.
 
     module bobyqa_module
-
-    !use precisions, only: rk
     use Header
     integer, protected :: ibmat,id,ifv,igo,ihq,ipq,isl,isu,ivl,iw,ixa,&
         ixb,ixn,ixo,ixp,izmat,iTotal
@@ -121,7 +119,7 @@
     real(rk) :: temp
 
     real(rk),parameter :: zero = 0.0_rk
-
+    !set save path
     ! The array W will be used for working space.
     itotal = ((NPT+5)*(NPT+N)+3*N*(N+5)/2)+1
     allocate( w((NPT+5)*(NPT+N)+3*N*(N+5)/2) )
@@ -240,7 +238,7 @@
     real (kind=rk), parameter :: two = 2.0_rk
     real (kind=rk), parameter :: zero = 0.0_rk
     integer :: location, ios
-    !character(1000) :: path = '\\econ-fs\Home3\uctphen\temp\'
+    !character(1000) :: path_bobyqa = '\\econ-fs\Home3\uctphen\temp\'
 
     procedure (func) :: calfun
     !
@@ -283,17 +281,17 @@
     nh = (n*np) / 2
     !If realoding continue from where left off
     if (reload) then
-        call loadState(path, x, xl, xu, xbase, xpt, fval, xopt, gopt, hq, pq, bmat, zmat, sl, su, &
-        xnew, xalt, d, vlag, w, rhobeg, rhoend, xoptsq, fsave, rho, diffa, diffb, &
-        delta, temp, crvmin, dsq, dnorm, distsq, diffc, errbig, frhosq, bdtol, &
-        bdtest, curv, fracsq, sumpq, sumz, sumw, adelt, cauchy, alpha, suma, sumb, &
-        beta, bsum, dx, denom, delsq, biglsq, hdiag, den, f, fopt,  vquad, ratio, densav, &
-        pqold, gqsq, gisq, dist, scaden, diff, sum, iprint, maxfun, N, np, npt, nptm, nh,&
-        kopt, nf, i, kbase, nresc, ntrits, itest, j, k, ih, nfsav, ip, jj, knew, jp, ndim, ksav, location )
+        call loadState(path_bobyqa, x, xl, xu, xbase, xpt, fval, xopt, gopt, hq, pq, bmat, zmat, sl, su, &
+            xnew, xalt, d, vlag, w, rhobeg, rhoend, xoptsq, fsave, rho, diffa, diffb, &
+            delta, temp, crvmin, dsq, dnorm, distsq, diffc, errbig, frhosq, bdtol, &
+            bdtest, curv, fracsq, sumpq, sumz, sumw, adelt, cauchy, alpha, suma, sumb, &
+            beta, bsum, dx, denom, delsq, biglsq, hdiag, den, f, fopt,  vquad, ratio, densav, &
+            pqold, gqsq, gisq, dist, scaden, diff, sum, iprint, maxfun, N, np, npt, nptm, nh,&
+            kopt, nf, i, kbase, nresc, ntrits, itest, j, k, ih, nfsav, ip, jj, knew, jp, ndim, ksav, location )
         GO TO (20,60,90) location
-    end if    
-    
-    
+    end if
+
+
     !
     !     The call of PRELIM sets the elements of XBASE, XPT, FVAL, GOPT, HQ, PQ,
     !     BMAT and ZMAT for the first iteration, with the corresponding values of
@@ -311,7 +309,7 @@
     end do
     fsave = fval (1)
     if (nf < npt) then
-        if (iprint > 0) write(*,'(/4X,A)') &
+        if (iprint > 0 .AND. rank==0) write(*,'(/4X,A)') &
             'Return from BOBYQA because CALFUN has been called MAXFUN times.'
         go to 720
     end if
@@ -334,15 +332,15 @@
 
 
 
-20  if (saveSt .AND. rank==0) then 
-        call saveState(path, x, xl, xu, xbase, xpt, fval, xopt, gopt, hq, pq, bmat, zmat, sl, su, &
-        xnew, xalt, d, vlag, w, rhobeg, rhoend, xoptsq, fsave, rho, diffa, diffb, &
-        delta, temp, crvmin, dsq, dnorm, distsq, diffc, errbig, frhosq, bdtol, &
-        bdtest, curv, fracsq, sumpq, sumz, sumw, adelt, cauchy, alpha, suma, sumb, &
-        beta, bsum, dx, denom, delsq, biglsq, hdiag, den, f, fopt,  vquad, ratio, densav, &
-        pqold, gqsq, gisq, dist, scaden, diff, sum, iprint, maxfun, N, np, npt, nptm, nh,&
-        kopt, nf, i, kbase, nresc, ntrits, itest, j, k, ih, nfsav, ip, jj, knew, jp, ndim, ksav, 1 )
-    end if 
+20  if (saveSt .AND. rank==0) then
+        call saveState(path_bobyqa, x, xl, xu, xbase, xpt, fval, xopt, gopt, hq, pq, bmat, zmat, sl, su, &
+            xnew, xalt, d, vlag, w, rhobeg, rhoend, xoptsq, fsave, rho, diffa, diffb, &
+            delta, temp, crvmin, dsq, dnorm, distsq, diffc, errbig, frhosq, bdtol, &
+            bdtest, curv, fracsq, sumpq, sumz, sumw, adelt, cauchy, alpha, suma, sumb, &
+            beta, bsum, dx, denom, delsq, biglsq, hdiag, den, f, fopt,  vquad, ratio, densav, &
+            pqold, gqsq, gisq, dist, scaden, diff, sum, iprint, maxfun, N, np, npt, nptm, nh,&
+            kopt, nf, i, kbase, nresc, ntrits, itest, j, k, ih, nfsav, ip, jj, knew, jp, ndim, ksav, 1 )
+    end if
     if (kopt /= kbase) then
         ih = 0
         do j = 1, n
@@ -374,14 +372,14 @@
     !     label 650 or 680 with NTRITS=-1, instead of calculating F at XNEW.
     !
 60  if (saveSt .AND. rank==0) then
-        call saveState(path, x, xl, xu, xbase, xpt, fval, xopt, gopt, hq, pq, bmat, zmat, sl, su, &
-        xnew, xalt, d, vlag, w, rhobeg, rhoend, xoptsq, fsave, rho, diffa, diffb, &
-        delta, temp, crvmin, dsq, dnorm, distsq, diffc, errbig, frhosq, bdtol, &
-        bdtest, curv, fracsq, sumpq, sumz, sumw, adelt, cauchy, alpha, suma, sumb, &
-        beta, bsum, dx, denom, delsq, biglsq, hdiag, den, f, fopt,  vquad, ratio, densav, &
-        pqold, gqsq, gisq, dist, scaden, diff, sum, iprint, maxfun, N, np, npt, nptm, nh,&
-        kopt, nf, i, kbase, nresc, ntrits, itest, j, k, ih, nfsav, ip, jj, knew, jp, ndim, ksav, 2 )
-    end if 
+        call saveState(path_bobyqa, x, xl, xu, xbase, xpt, fval, xopt, gopt, hq, pq, bmat, zmat, sl, su, &
+            xnew, xalt, d, vlag, w, rhobeg, rhoend, xoptsq, fsave, rho, diffa, diffb, &
+            delta, temp, crvmin, dsq, dnorm, distsq, diffc, errbig, frhosq, bdtol, &
+            bdtest, curv, fracsq, sumpq, sumz, sumw, adelt, cauchy, alpha, suma, sumb, &
+            beta, bsum, dx, denom, delsq, biglsq, hdiag, den, f, fopt,  vquad, ratio, densav, &
+            pqold, gqsq, gisq, dist, scaden, diff, sum, iprint, maxfun, N, np, npt, nptm, nh,&
+            kopt, nf, i, kbase, nresc, ntrits, itest, j, k, ih, nfsav, ip, jj, knew, jp, ndim, ksav, 2 )
+    end if
     call trsbox (n, npt, xpt, xopt, gopt, hq, pq, sl, su, delta, xnew, d, w, w(np), &
         & w(np+n), w(np+2*n), w(np+3*n), dsq, crvmin)
     dnorm = min (delta, sqrt(dsq))
@@ -423,15 +421,15 @@
     !     derivatives of the current model, beginning with the changes to BMAT
     !     that do not depend on ZMAT. VLAG is used temporarily for working space.
     !
-90  if (saveSt .AND. rank==0) then 
-        call saveState(path, x, xl, xu, xbase, xpt, fval, xopt, gopt, hq, pq, bmat, zmat, sl, su, &
-        xnew, xalt, d, vlag, w, rhobeg, rhoend, xoptsq, fsave, rho, diffa, diffb, &
-        delta, temp, crvmin, dsq, dnorm, distsq, diffc, errbig, frhosq, bdtol, &
-        bdtest, curv, fracsq, sumpq, sumz, sumw, adelt, cauchy, alpha, suma, sumb, &
-        beta, bsum, dx, denom, delsq, biglsq, hdiag, den, f, fopt,  vquad, ratio, densav, &
-        pqold, gqsq, gisq, dist, scaden, diff, sum, iprint, maxfun, N, np, npt, nptm, nh,&
-        kopt, nf, i, kbase, nresc, ntrits, itest, j, k, ih, nfsav, ip, jj, knew, jp, ndim, ksav, 3 )
-    end if 
+90  if (saveSt .AND. rank==0) then
+        call saveState(path_bobyqa, x, xl, xu, xbase, xpt, fval, xopt, gopt, hq, pq, bmat, zmat, sl, su, &
+            xnew, xalt, d, vlag, w, rhobeg, rhoend, xoptsq, fsave, rho, diffa, diffb, &
+            delta, temp, crvmin, dsq, dnorm, distsq, diffc, errbig, frhosq, bdtol, &
+            bdtest, curv, fracsq, sumpq, sumz, sumw, adelt, cauchy, alpha, suma, sumb, &
+            beta, bsum, dx, denom, delsq, biglsq, hdiag, den, f, fopt,  vquad, ratio, densav, &
+            pqold, gqsq, gisq, dist, scaden, diff, sum, iprint, maxfun, N, np, npt, nptm, nh,&
+            kopt, nf, i, kbase, nresc, ntrits, itest, j, k, ih, nfsav, ip, jj, knew, jp, ndim, ksav, 3 )
+    end if
     if (dsq <= 1.0e-3_rk*xoptsq) then
         fracsq = 0.25_rk * xoptsq
         sumpq = zero
@@ -538,7 +536,7 @@
     end if
     if (nf < 0) then
         nf = maxfun
-        if (iprint > 0) write(*,'(/4X,A)') &
+        if (iprint > 0 .AND. rank==0) write(*,'(/4X,A)') &
             'Return from BOBYQA because CALFUN has been called MAXFUN times.'
         go to 720
     end if
@@ -635,7 +633,7 @@
             if (nf > nresc) then
                 go to 190
             end if
-            if (iprint > 0) write(*,'(/5X,A)') &
+            if (iprint > 0 .AND. rank==0) write(*,'(/5X,A)') &
                 'Return from BOBYQA because of much cancellation in a denominator.'
             go to 720
         end if
@@ -674,7 +672,7 @@
             if (nf > nresc) then
                 go to 190
             end if
-            if (iprint > 0) write(*,'(/5X,A)') &
+            if (iprint > 0 .AND. rank==0) write(*,'(/5X,A)') &
                 'Return from BOBYQA because of much cancellation in a denominator.'
             go to 720
         end if
@@ -693,13 +691,13 @@
         if (xnew(i) == su(i)) x (i) = xu (i)
     end do
     if (nf >= maxfun) then
-        if (iprint > 0) write(*,'(/4X,A)') &
+        if (iprint > 0 .AND. rank==0) write(*,'(/4X,A)') &
             'Return from BOBYQA because CALFUN has been called MAXFUN times.'
         go to 720
     end if
     nf = nf + 1
     call calfun (n, x(1:n), f)
-    if (iprint == 3) then
+    if (iprint == 3 .AND. rank==0) then
         print 400, nf, f, (x(i), i=1, n)
 400     format (/ 4 x, 'Function number', i6, '    F =', 1 pd18.10,&
             '   The corresponding X is:' / (2 x, 5d15.6))
@@ -737,7 +735,7 @@
     !
     if (ntrits > 0) then
         if (vquad >= zero) then
-            if (iprint > 0) print 430
+            if (iprint > 0 .AND. rank==0) print 430
 430         format (/ 4 x, 'Return from BOBYQA because a trust',&
                 ' region step has failed to reduce Q.')
             go to 720
@@ -987,8 +985,8 @@
             rho = tenth * rho
         end if
         delta = max (delta, rho)
-        if (iprint >= 2) then
-            if (iprint >= 3) print 690
+        if (iprint >= 2 .AND. rank==0) then
+            if (iprint >= 3 .AND. rank==0) print 690
 690         format (5 x)
             if (rank==0) print 700, rho, nf
 700         format (/ 4 x, 'New RHO =', 1 pd11.4, 5 x, 'Number of',&
@@ -1014,11 +1012,11 @@
         end do
         f = fval (kopt)
     end if
-    if (iprint >= 1) then
+    if (iprint >= 1 .AND. rank==0) then
         if (rank==0) print 740, nf
 740     format (/ 4 x, 'At the return from BOBYQA', 5 x,&
             'Number of function values =', i6)
-        print 710, f, (x(i), i=1, n)
+        if (rank==0) print 710, f, (x(i), i=1, n)
     end if
     return
     end subroutine bobyqb
@@ -1420,7 +1418,7 @@
         if (xpt(nf, j) == su(j)) x (j) = xu (j)
     end do
     call calfun (n, x(1:n), f)
-    if (iprint == 3) then
+    if (iprint == 3 .AND. rank==0) then
         print 70, nf, f, (x(i), i=1, n)
 70      format (/ 4 x, 'Function number', i6, '    F =', 1 pd18.10,&
             '    The corresponding X is:' / (2 x, 5d15.6))
@@ -1860,7 +1858,7 @@
         end do
         nf = nf + 1
         call calfun (n, w(1:n), f)
-        if (iprint == 3) then
+        if (iprint == 3 .AND. rank==0) then
             print 300, nf, f, (w(i), i=1, n)
 300         format (/ 4 x, 'Function number', i6, '    F =', 1 pd18.10,&
                 '    The corresponding X is:' / (2 x, 5d15.6))
@@ -2398,7 +2396,8 @@
         vquad, ratio, densav, pqold, gqsq, gisq, dist, scaden, diff, sum
     integer :: iprint, maxfun, N, np, npt, nptm, nh, kopt, nf, i, kbase, nresc, ntrits, itest, j, k, ih, nfsav, &
         ip, jj, knew, jp, ndim, ksav, location
-    integer :: iLocal, c2
+    integer :: iLocal
+    integer (kind=8) :: c2
 
     !call bobyqb (n, npt, x, xl, xu, rhobeg, rhoend, iprint, maxfun, w(), w(), &
     !    w(), w(), w(), w(), w(), w(), w(), , w(), &
@@ -2415,35 +2414,35 @@
     open (unit = 666, form="unformatted", file=trim(path) // 'x', status='replace', ACCESS="STREAM", action='write')
     write (666) x(1:n)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'xl', status='replace', ACCESS="STREAM", action='write')
     write (666) xl(1:n)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'xu', status='replace', ACCESS="STREAM", action='write')
     write (666) xu(1:n)
-    close (unit=666)    
-    
+    close (unit=666)
+
     open (unit = 666, form="unformatted", file=trim(path) // 'xbase', status='replace', ACCESS="STREAM", action='write')
     ilocal = iTotal - ixb
     write (666) xbase(1:ilocal)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'xpt', status='replace', ACCESS="STREAM", action='write')
     ilocal = (iTotal - ixp)/npt
     write (666) xpt(:,1:ilocal)
-    close (unit=666)   
-    
+    close (unit=666)
+
     open (unit = 666, form="unformatted", file=trim(path) // 'fval', status='replace', ACCESS="STREAM", action='write')
     ilocal = iTotal - ifv
     write (666) fval(1:ilocal)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'xopt', status='replace', ACCESS="STREAM", action='write')
     ilocal = iTotal - ixo
     write (666) xopt(1:ilocal)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'gopt', status='replace', ACCESS="STREAM", action='write')
     ilocal = iTotal - igo
     write (666) gopt(1:ilocal)
@@ -2458,52 +2457,52 @@
     ilocal = iTotal - ipq
     write (666) pq(1:ilocal)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'bmat', status='replace', ACCESS="STREAM", action='write')
     ilocal = (iTotal - ibmat)/ndim
     write (666) bmat(:,1:ilocal)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'zmat', status='replace', ACCESS="STREAM", action='write')
     ilocal = (iTotal - izmat)/npt
     write (666) zmat(:,1:ilocal)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'sl', status='replace', ACCESS="STREAM", action='write')
     ilocal = iTotal - isl
     write (666) sl(1:ilocal)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'su', status='replace', ACCESS="STREAM", action='write')
     ilocal = iTotal - isu
     write (666) su(1:ilocal)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'xnew', status='replace', ACCESS="STREAM", action='write')
     ilocal = iTotal - ixn
     write (666) xnew(1:ilocal)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'xalt', status='replace', ACCESS="STREAM", action='write')
     ilocal = iTotal - ixa
     write (666) xalt(1:ilocal)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'd', status='replace', ACCESS="STREAM", action='write')
     ilocal = iTotal - id
     write (666) d(1:ilocal)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'vlag', status='replace', ACCESS="STREAM", action='write')
     ilocal = iTotal - ivl
     write (666) vlag(1:ilocal)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'w', status='replace', ACCESS="STREAM", action='write')
     ilocal = iTotal - iw
     write (666) w(1:ilocal)
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'rhobeg', status='replace', ACCESS="STREAM", action='write')
     write (666) rhobeg
     close (unit=666)
@@ -2531,35 +2530,35 @@
     open (unit = 666, form="unformatted", file=trim(path) // 'diffb', status='replace', ACCESS="STREAM", action='write')
     write (666) diffb
     close (unit=666)
-  
+
     open (unit = 666, form="unformatted", file=trim(path) // 'delta', status='replace', ACCESS="STREAM", action='write')
     write (666) delta
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'temp', status='replace', ACCESS="STREAM", action='write')
     write (666) temp
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'crvmin', status='replace', ACCESS="STREAM", action='write')
     write (666) crvmin
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'dsq', status='replace', ACCESS="STREAM", action='write')
     write (666) dsq
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'dnorm', status='replace', ACCESS="STREAM", action='write')
     write (666) dnorm
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'distsq', status='replace', ACCESS="STREAM", action='write')
     write (666) distsq
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'diffc', status='replace', ACCESS="STREAM", action='write')
     write (666) diffc
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'errbig', status='replace', ACCESS="STREAM", action='write')
     write (666) errbig
     close (unit=666)
@@ -2567,23 +2566,23 @@
     open (unit = 666, form="unformatted", file=trim(path) // 'frhosq', status='replace', ACCESS="STREAM", action='write')
     write (666) frhosq
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'bdtol', status='replace', ACCESS="STREAM", action='write')
     write (666) bdtol
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'bdtest', status='replace', ACCESS="STREAM", action='write')
     write (666) bdtest
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'curv', status='replace', ACCESS="STREAM", action='write')
     write (666) curv
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'fracsq', status='replace', ACCESS="STREAM", action='write')
     write (666) fracsq
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'sumpq', status='replace', ACCESS="STREAM", action='write')
     write (666) sumpq
     close (unit=666)
@@ -2591,219 +2590,219 @@
     open (unit = 666, form="unformatted", file=trim(path) // 'sumz', status='replace', ACCESS="STREAM", action='write')
     write (666) sumz
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'sumw', status='replace', ACCESS="STREAM", action='write')
     write (666) sumw
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'adelt', status='replace', ACCESS="STREAM", action='write')
     write (666) adelt
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'cauchy', status='replace', ACCESS="STREAM", action='write')
     write (666) cauchy
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'alpha', status='replace', ACCESS="STREAM", action='write')
     write (666) alpha
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'suma', status='replace', ACCESS="STREAM", action='write')
     write (666) suma
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'sumb', status='replace', ACCESS="STREAM", action='write')
     write (666) sumb
     close (unit=666)
-    
-         
+
+
     open (unit = 666, form="unformatted", file=trim(path) // 'beta', status='replace', ACCESS="STREAM", action='write')
     write (666) beta
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'bsum', status='replace', ACCESS="STREAM", action='write')
     write (666) bsum
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'dx', status='replace', ACCESS="STREAM", action='write')
     write (666) dx
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'denom', status='replace', ACCESS="STREAM", action='write')
     write (666) denom
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'delsq', status='replace', ACCESS="STREAM", action='write')
     write (666) delsq
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'biglsq', status='replace', ACCESS="STREAM", action='write')
     write (666) biglsq
     close (unit=666)
-    
-    
+
+
     open (unit = 666, form="unformatted", file=trim(path) // 'hdiag', status='replace', ACCESS="STREAM", action='write')
     write (666) hdiag
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'den', status='replace', ACCESS="STREAM", action='write')
     write (666) den
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'f', status='replace', ACCESS="STREAM", action='write')
     write (666) f
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'fopt', status='replace', ACCESS="STREAM", action='write')
     write (666) fopt
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'vquad', status='replace', ACCESS="STREAM", action='write')
     write (666) vquad
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'ratio', status='replace', ACCESS="STREAM", action='write')
     write (666) ratio
     close (unit=666)
-             
+
     open (unit = 666, form="unformatted", file=trim(path) // 'densav', status='replace', ACCESS="STREAM", action='write')
     write (666) densav
     close (unit=666)
-     
+
     open (unit = 666, form="unformatted", file=trim(path) // 'pqold', status='replace', ACCESS="STREAM", action='write')
     write (666) pqold
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'gqsq', status='replace', ACCESS="STREAM", action='write')
     write (666) gqsq
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'gisq', status='replace', ACCESS="STREAM", action='write')
     write (666) gisq
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'dist', status='replace', ACCESS="STREAM", action='write')
     write (666) dist
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'scaden', status='replace', ACCESS="STREAM", action='write')
     write (666) scaden
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'diff', status='replace', ACCESS="STREAM", action='write')
     write (666) diff
     close (unit=666)
-   
+
     open (unit = 666, form="unformatted", file=trim(path) // 'sum', status='replace', ACCESS="STREAM", action='write')
     write (666) sum
     close (unit=666)
-  
+
     open (unit = 666, form="unformatted", file=trim(path) // 'iprint', status='replace', ACCESS="STREAM", action='write')
     write (666) iprint
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'maxfun', status='replace', ACCESS="STREAM", action='write')
     write (666) maxfun
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'N', status='replace', ACCESS="STREAM", action='write')
     write (666) N
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'np', status='replace', ACCESS="STREAM", action='write')
     write (666) np
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'npt', status='replace', ACCESS="STREAM", action='write')
     write (666) npt
-    close (unit=666)          
-    
+    close (unit=666)
+
     open (unit = 666, form="unformatted", file=trim(path) // 'nptm', status='replace', ACCESS="STREAM", action='write')
     write (666) nptm
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'nh', status='replace', ACCESS="STREAM", action='write')
     write (666) nh
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'kopt', status='replace', ACCESS="STREAM", action='write')
     write (666) kopt
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'nf', status='replace', ACCESS="STREAM", action='write')
     write (666) nf
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'i', status='replace', ACCESS="STREAM", action='write')
     write (666) i
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'kbase', status='replace', ACCESS="STREAM", action='write')
     write (666) kbase
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'nresc', status='replace', ACCESS="STREAM", action='write')
     write (666) nresc
     close (unit=666)
-    
-    
+
+
     open (unit = 666, form="unformatted", file=trim(path) // 'ntrits', status='replace', ACCESS="STREAM", action='write')
     write (666) ntrits
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'itest', status='replace', ACCESS="STREAM", action='write')
     write (666) itest
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'j', status='replace', ACCESS="STREAM", action='write')
     write (666) j
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'k', status='replace', ACCESS="STREAM", action='write')
     write (666) k
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'ih', status='replace', ACCESS="STREAM", action='write')
     write (666) ih
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'nfsav', status='replace', ACCESS="STREAM", action='write')
     write (666) nfsav
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'ip', status='replace', ACCESS="STREAM", action='write')
     write (666) ip
     close (unit=666)
-    
-    
+
+
     open (unit = 666, form="unformatted", file=trim(path) // 'jj', status='replace', ACCESS="STREAM", action='write')
     write (666) jj
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'knew', status='replace', ACCESS="STREAM", action='write')
     write (666) knew
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'jp', status='replace', ACCESS="STREAM", action='write')
     write (666) jp
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'ndim', status='replace', ACCESS="STREAM", action='write')
     write (666) ndim
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'ksav', status='replace', ACCESS="STREAM", action='write')
     write (666) ksav
     close (unit=666)
-    
+
     open (unit = 666, form="unformatted", file=trim(path) // 'location', status='replace', ACCESS="STREAM", action='write')
     write (666) location
     close (unit=666)
-    
+
     CALL SYSTEM_CLOCK(c2)
-    write (*,*) "Time elapsed " ,(c2-c1)/rate, " rank ", rank
-    if ((c2-c1)/rate >300) stop
-            
+    if (rank==0) write (*,*) "Time elapsed Secs " ,(c2-c1)/rate, " of allowance ", 21.5*60.0**2
+    if ((c2-c1)/rate >21.5*60.0**2) stop
+
     end subroutine saveState
 
 
@@ -2815,7 +2814,9 @@
         pqold, gqsq, gisq, dist, scaden, diff, sum, iprint, maxfun, N, np, npt, nptm, nh,&
         kopt, nf, i, kbase, nresc, ntrits, itest, j, k, ih, nfsav, ip, jj, knew, jp, ndim, ksav, location )
     implicit none
-
+#ifdef mpiBuild 
+    include 'mpif.h'
+#endif    
     character(len=*) :: path
     real (kind=rk) :: x (*), xl (*), xu (*), xbase (*), xpt (npt,*), fval (*), xopt (*), &
         gopt (*), hq (*), pq (*), bmat (ndim,*), zmat (npt,*), sl (*), su (*), &
@@ -2827,7 +2828,8 @@
     integer :: iprint, maxfun, N, np, npt, nptm, nh, kopt, nf, i, kbase, nresc, ntrits, itest, j, k, ih, nfsav, &
         ip, jj, knew, jp, ndim, ksav, location
     real (kind=rk):: rhobegLoc, rhoendLoc
-    integer :: iLocal, maxfunloc
+    integer :: iLocal, maxfunloc, count
+    integer (kind=8) :: c2
 
     !call bobyqb (n, npt, x, xl, xu, rhobeg, rhoend, iprint, maxfun, w(), w(), &
     !    w(), w(), w(), w(), w(), w(), w(), , w(), &
@@ -2841,406 +2843,416 @@
     !    , , , , , , , , , , , , &
     !    , , , calfun, reload)
 
-    open (unit = 666, form="unformatted", file=trim(path) // 'ndim', status='unknown', ACCESS="STREAM", action='read')
-    read (666) ndim
-    close (unit=666)    
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'x', status='unknown', ACCESS="STREAM", action='read')
-    read (666) x(1:n)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'xl', status='unknown', ACCESS="STREAM", action='read')
-    read (666) xl(1:n)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'xu', status='unknown', ACCESS="STREAM", action='read')
-    read (666) xu(1:n)
-    close (unit=666)    
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'xbase', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = iTotal - ixb
-    read (666) xbase(1:ilocal)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'xpt', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = (iTotal - ixp)/npt
-    read (666) xpt(:,1:ilocal)
-    close (unit=666)   
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'fval', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = iTotal - ifv
-    read (666) fval(1:ilocal)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'xopt', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = iTotal - ixo
-    read (666) xopt(1:ilocal)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'gopt', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = iTotal - igo
-    read (666) gopt(1:ilocal)
-    close (unit=666)
+    do count = 0,procSize-1
+        if (rank==count) then
+            open (unit = 666, form="unformatted", file=trim(path) // 'ndim', status='unknown', ACCESS="STREAM", action='read')
+            read (666) ndim
+            close (unit=666)
 
-    open (unit = 666, form="unformatted", file=trim(path) // 'hq', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = iTotal - ihq
-    read (666) hq(1:ilocal)
-    close (unit=666)
+            open (unit = 666, form="unformatted", file=trim(path) // 'x', status='unknown', ACCESS="STREAM", action='read')
+            read (666) x(1:n)
+            close (unit=666)
 
-    open (unit = 666, form="unformatted", file=trim(path) // 'pq', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = iTotal - ipq
-    read (666) pq(1:ilocal)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'bmat', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = (iTotal - ibmat)/ndim
-    read (666) bmat(:,1:ilocal)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'zmat', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = (iTotal - izmat)/npt
-    read (666) zmat(:,1:ilocal)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'sl', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = iTotal - isl
-    read (666) sl(1:ilocal)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'su', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = iTotal - isu
-    read (666) su(1:ilocal)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'xnew', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = iTotal - ixn
-    read (666) xnew(1:ilocal)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'xalt', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = iTotal - ixa
-    read (666) xalt(1:ilocal)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'd', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = iTotal - id
-    read (666) d(1:ilocal)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'vlag', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = iTotal - ivl
-    read (666) vlag(1:ilocal)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'w', status='unknown', ACCESS="STREAM", action='read')
-    ilocal = iTotal - iw
-    read (666) w(1:ilocal)
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'rhobeg', status='unknown', ACCESS="STREAM", action='read')
-    read (666) rhobegLoc
-    close (unit=666)
-    if (abs(rhobegLoc-rhobeg) > 1E-13) then 
-        write (*,*) "Can't load different criteria!"
-       stop
-    end if
+            open (unit = 666, form="unformatted", file=trim(path) // 'xl', status='unknown', ACCESS="STREAM", action='read')
+            read (666) xl(1:n)
+            close (unit=666)
 
-    open (unit = 666, form="unformatted", file=trim(path) // 'rhoend', status='unknown', ACCESS="STREAM", action='read')
-    read (666) rhoendLoc
-    close (unit=666)
-    if (abs(rhoendLoc-rhoend)>1D-13) then
-       write (*,*) "Can't load different criteria!"
-       stop
-    end  if
+            open (unit = 666, form="unformatted", file=trim(path) // 'xu', status='unknown', ACCESS="STREAM", action='read')
+            read (666) xu(1:n)
+            close (unit=666)
 
-    open (unit = 666, form="unformatted", file=trim(path) // 'xoptsq', status='unknown', ACCESS="STREAM", action='read')
-    read (666) xoptsq
-    close (unit=666)
+            open (unit = 666, form="unformatted", file=trim(path) // 'xbase', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = iTotal - ixb
+            read (666) xbase(1:ilocal)
+            close (unit=666)
 
-    open (unit = 666, form="unformatted", file=trim(path) // 'fsave', status='unknown', ACCESS="STREAM", action='read')
-    read (666) fsave
-    close (unit=666)
+            open (unit = 666, form="unformatted", file=trim(path) // 'xpt', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = (iTotal - ixp)/npt
+            read (666) xpt(:,1:ilocal)
+            close (unit=666)
 
-    open (unit = 666, form="unformatted", file=trim(path) // 'rho', status='unknown', ACCESS="STREAM", action='read')
-    read (666) rho
-    close (unit=666)
+            open (unit = 666, form="unformatted", file=trim(path) // 'fval', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = iTotal - ifv
+            read (666) fval(1:ilocal)
+            close (unit=666)
 
-    open (unit = 666, form="unformatted", file=trim(path) // 'diffa', status='unknown', ACCESS="STREAM", action='read')
-    read (666) diffa
-    close (unit=666)
+            open (unit = 666, form="unformatted", file=trim(path) // 'xopt', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = iTotal - ixo
+            read (666) xopt(1:ilocal)
+            close (unit=666)
 
-    open (unit = 666, form="unformatted", file=trim(path) // 'diffb', status='unknown', ACCESS="STREAM", action='read')
-    read (666) diffb
-    close (unit=666)
-  
-    open (unit = 666, form="unformatted", file=trim(path) // 'delta', status='unknown', ACCESS="STREAM", action='read')
-    read (666) delta
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'temp', status='unknown', ACCESS="STREAM", action='read')
-    read (666) temp
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'crvmin', status='unknown', ACCESS="STREAM", action='read')
-    read (666) crvmin
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'dsq', status='unknown', ACCESS="STREAM", action='read')
-    read (666) dsq
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'dnorm', status='unknown', ACCESS="STREAM", action='read')
-    read (666) dnorm
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'distsq', status='unknown', ACCESS="STREAM", action='read')
-    read (666) distsq
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'diffc', status='unknown', ACCESS="STREAM", action='read')
-    read (666) diffc
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'errbig', status='unknown', ACCESS="STREAM", action='read')
-    read (666) errbig
-    close (unit=666)
+            open (unit = 666, form="unformatted", file=trim(path) // 'gopt', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = iTotal - igo
+            read (666) gopt(1:ilocal)
+            close (unit=666)
 
-    open (unit = 666, form="unformatted", file=trim(path) // 'frhosq', status='unknown', ACCESS="STREAM", action='read')
-    read (666) frhosq
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'bdtol', status='unknown', ACCESS="STREAM", action='read')
-    read (666) bdtol
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'bdtest', status='unknown', ACCESS="STREAM", action='read')
-    read (666) bdtest
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'curv', status='unknown', ACCESS="STREAM", action='read')
-    read (666) curv
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'fracsq', status='unknown', ACCESS="STREAM", action='read')
-    read (666) fracsq
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'sumpq', status='unknown', ACCESS="STREAM", action='read')
-    read (666) sumpq
-    close (unit=666)
+            open (unit = 666, form="unformatted", file=trim(path) // 'hq', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = iTotal - ihq
+            read (666) hq(1:ilocal)
+            close (unit=666)
 
-    open (unit = 666, form="unformatted", file=trim(path) // 'sumz', status='unknown', ACCESS="STREAM", action='read')
-    read (666) sumz
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'sumw', status='unknown', ACCESS="STREAM", action='read')
-    read (666) sumw
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'adelt', status='unknown', ACCESS="STREAM", action='read')
-    read (666) adelt
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'cauchy', status='unknown', ACCESS="STREAM", action='read')
-    read (666) cauchy
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'alpha', status='unknown', ACCESS="STREAM", action='read')
-    read (666) alpha
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'suma', status='unknown', ACCESS="STREAM", action='read')
-    read (666) suma
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'sumb', status='unknown', ACCESS="STREAM", action='read')
-    read (666) sumb
-    close (unit=666)
-    
-         
-    open (unit = 666, form="unformatted", file=trim(path) // 'beta', status='unknown', ACCESS="STREAM", action='read')
-    read (666) beta
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'bsum', status='unknown', ACCESS="STREAM", action='read')
-    read (666) bsum
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'dx', status='unknown', ACCESS="STREAM", action='read')
-    read (666) dx
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'denom', status='unknown', ACCESS="STREAM", action='read')
-    read (666) denom
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'delsq', status='unknown', ACCESS="STREAM", action='read')
-    read (666) delsq
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'biglsq', status='unknown', ACCESS="STREAM", action='read')
-    read (666) biglsq
-    close (unit=666)
-    
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'hdiag', status='unknown', ACCESS="STREAM", action='read')
-    read (666) hdiag
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'den', status='unknown', ACCESS="STREAM", action='read')
-    read (666) den
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'f', status='unknown', ACCESS="STREAM", action='read')
-    read (666) f
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'fopt', status='unknown', ACCESS="STREAM", action='read')
-    read (666) fopt
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'vquad', status='unknown', ACCESS="STREAM", action='read')
-    read (666) vquad
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'ratio', status='unknown', ACCESS="STREAM", action='read')
-    read (666) ratio
-    close (unit=666)
-             
-    open (unit = 666, form="unformatted", file=trim(path) // 'densav', status='unknown', ACCESS="STREAM", action='read')
-    read (666) densav
-    close (unit=666)
-     
-    open (unit = 666, form="unformatted", file=trim(path) // 'pqold', status='unknown', ACCESS="STREAM", action='read')
-    read (666) pqold
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'gqsq', status='unknown', ACCESS="STREAM", action='read')
-    read (666) gqsq
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'gisq', status='unknown', ACCESS="STREAM", action='read')
-    read (666) gisq
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'dist', status='unknown', ACCESS="STREAM", action='read')
-    read (666) dist
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'scaden', status='unknown', ACCESS="STREAM", action='read')
-    read (666) scaden
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'diff', status='unknown', ACCESS="STREAM", action='read')
-    read (666) diff
-    close (unit=666)
-   
-    open (unit = 666, form="unformatted", file=trim(path) // 'sum', status='unknown', ACCESS="STREAM", action='read')
-    read (666) sum
-    close (unit=666)
-  
-    !open (unit = 666, form="unformatted", file=trim(path) // 'iprint', status='unknown', ACCESS="STREAM", action='read')
-    !read (666) iprint
-    !close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'maxfun', status='unknown', ACCESS="STREAM", action='read')
-    read (666) maxfunloc
-    close (unit=666)
-    if (maxfunloc .NE. maxfun) then
-       write (*,*) "Can't load different criteria!"
-       stop
-    end  if
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'N', status='unknown', ACCESS="STREAM", action='read')
-    read (666) N
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'np', status='unknown', ACCESS="STREAM", action='read')
-    read (666) np
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'npt', status='unknown', ACCESS="STREAM", action='read')
-    read (666) npt
-    close (unit=666)          
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'nptm', status='unknown', ACCESS="STREAM", action='read')
-    read (666) nptm
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'nh', status='unknown', ACCESS="STREAM", action='read')
-    read (666) nh
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'kopt', status='unknown', ACCESS="STREAM", action='read')
-    read (666) kopt
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'nf', status='unknown', ACCESS="STREAM", action='read')
-    read (666) nf
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'i', status='unknown', ACCESS="STREAM", action='read')
-    read (666) i
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'kbase', status='unknown', ACCESS="STREAM", action='read')
-    read (666) kbase
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'nresc', status='unknown', ACCESS="STREAM", action='read')
-    read (666) nresc
-    close (unit=666)
-    
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'ntrits', status='unknown', ACCESS="STREAM", action='read')
-    read (666) ntrits
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'itest', status='unknown', ACCESS="STREAM", action='read')
-    read (666) itest
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'j', status='unknown', ACCESS="STREAM", action='read')
-    read (666) j
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'k', status='unknown', ACCESS="STREAM", action='read')
-    read (666) k
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'ih', status='unknown', ACCESS="STREAM", action='read')
-    read (666) ih
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'nfsav', status='unknown', ACCESS="STREAM", action='read')
-    read (666) nfsav
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'ip', status='unknown', ACCESS="STREAM", action='read')
-    read (666) ip
-    close (unit=666)
-    
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'jj', status='unknown', ACCESS="STREAM", action='read')
-    read (666) jj
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'knew', status='unknown', ACCESS="STREAM", action='read')
-    read (666) knew
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'jp', status='unknown', ACCESS="STREAM", action='read')
-    read (666) jp
-    close (unit=666)
-    
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'ksav', status='unknown', ACCESS="STREAM", action='read')
-    read (666) ksav
-    close (unit=666)
-    
-    open (unit = 666, form="unformatted", file=trim(path) // 'location', status='unknown', ACCESS="STREAM", action='read')
-    read (666) location
-    close (unit=666)
+            open (unit = 666, form="unformatted", file=trim(path) // 'pq', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = iTotal - ipq
+            read (666) pq(1:ilocal)
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'bmat', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = (iTotal - ibmat)/ndim
+            read (666) bmat(:,1:ilocal)
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'zmat', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = (iTotal - izmat)/npt
+            read (666) zmat(:,1:ilocal)
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'sl', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = iTotal - isl
+            read (666) sl(1:ilocal)
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'su', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = iTotal - isu
+            read (666) su(1:ilocal)
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'xnew', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = iTotal - ixn
+            read (666) xnew(1:ilocal)
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'xalt', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = iTotal - ixa
+            read (666) xalt(1:ilocal)
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'd', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = iTotal - id
+            read (666) d(1:ilocal)
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'vlag', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = iTotal - ivl
+            read (666) vlag(1:ilocal)
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'w', status='unknown', ACCESS="STREAM", action='read')
+            ilocal = iTotal - iw
+            read (666) w(1:ilocal)
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'rhobeg', status='unknown', ACCESS="STREAM", action='read')
+            read (666) rhobegLoc
+            close (unit=666)
+            !if (abs(rhobegLoc-rhobeg) > 1E-13) then
+            !    write (*,*) "Can't load different criteria!"
+            !    stop
+            !end if
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'rhoend', status='unknown', ACCESS="STREAM", action='read')
+            read (666) rhoendLoc
+            close (unit=666)
+            if (abs(rhoendLoc-rhoend)>1D-13) then
+                write (*,*) "Can't load different criteria!"
+                stop
+            end  if
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'xoptsq', status='unknown', ACCESS="STREAM", action='read')
+            read (666) xoptsq
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'fsave', status='unknown', ACCESS="STREAM", action='read')
+            read (666) fsave
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'rho', status='unknown', ACCESS="STREAM", action='read')
+            read (666) rho
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'diffa', status='unknown', ACCESS="STREAM", action='read')
+            read (666) diffa
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'diffb', status='unknown', ACCESS="STREAM", action='read')
+            read (666) diffb
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'delta', status='unknown', ACCESS="STREAM", action='read')
+            read (666) delta
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'temp', status='unknown', ACCESS="STREAM", action='read')
+            read (666) temp
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'crvmin', status='unknown', ACCESS="STREAM", action='read')
+            read (666) crvmin
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'dsq', status='unknown', ACCESS="STREAM", action='read')
+            read (666) dsq
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'dnorm', status='unknown', ACCESS="STREAM", action='read')
+            read (666) dnorm
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'distsq', status='unknown', ACCESS="STREAM", action='read')
+            read (666) distsq
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'diffc', status='unknown', ACCESS="STREAM", action='read')
+            read (666) diffc
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'errbig', status='unknown', ACCESS="STREAM", action='read')
+            read (666) errbig
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'frhosq', status='unknown', ACCESS="STREAM", action='read')
+            read (666) frhosq
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'bdtol', status='unknown', ACCESS="STREAM", action='read')
+            read (666) bdtol
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'bdtest', status='unknown', ACCESS="STREAM", action='read')
+            read (666) bdtest
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'curv', status='unknown', ACCESS="STREAM", action='read')
+            read (666) curv
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'fracsq', status='unknown', ACCESS="STREAM", action='read')
+            read (666) fracsq
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'sumpq', status='unknown', ACCESS="STREAM", action='read')
+            read (666) sumpq
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'sumz', status='unknown', ACCESS="STREAM", action='read')
+            read (666) sumz
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'sumw', status='unknown', ACCESS="STREAM", action='read')
+            read (666) sumw
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'adelt', status='unknown', ACCESS="STREAM", action='read')
+            read (666) adelt
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'cauchy', status='unknown', ACCESS="STREAM", action='read')
+            read (666) cauchy
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'alpha', status='unknown', ACCESS="STREAM", action='read')
+            read (666) alpha
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'suma', status='unknown', ACCESS="STREAM", action='read')
+            read (666) suma
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'sumb', status='unknown', ACCESS="STREAM", action='read')
+            read (666) sumb
+            close (unit=666)
+
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'beta', status='unknown', ACCESS="STREAM", action='read')
+            read (666) beta
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'bsum', status='unknown', ACCESS="STREAM", action='read')
+            read (666) bsum
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'dx', status='unknown', ACCESS="STREAM", action='read')
+            read (666) dx
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'denom', status='unknown', ACCESS="STREAM", action='read')
+            read (666) denom
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'delsq', status='unknown', ACCESS="STREAM", action='read')
+            read (666) delsq
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'biglsq', status='unknown', ACCESS="STREAM", action='read')
+            read (666) biglsq
+            close (unit=666)
+
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'hdiag', status='unknown', ACCESS="STREAM", action='read')
+            read (666) hdiag
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'den', status='unknown', ACCESS="STREAM", action='read')
+            read (666) den
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'f', status='unknown', ACCESS="STREAM", action='read')
+            read (666) f
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'fopt', status='unknown', ACCESS="STREAM", action='read')
+            read (666) fopt
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'vquad', status='unknown', ACCESS="STREAM", action='read')
+            read (666) vquad
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'ratio', status='unknown', ACCESS="STREAM", action='read')
+            read (666) ratio
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'densav', status='unknown', ACCESS="STREAM", action='read')
+            read (666) densav
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'pqold', status='unknown', ACCESS="STREAM", action='read')
+            read (666) pqold
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'gqsq', status='unknown', ACCESS="STREAM", action='read')
+            read (666) gqsq
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'gisq', status='unknown', ACCESS="STREAM", action='read')
+            read (666) gisq
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'dist', status='unknown', ACCESS="STREAM", action='read')
+            read (666) dist
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'scaden', status='unknown', ACCESS="STREAM", action='read')
+            read (666) scaden
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'diff', status='unknown', ACCESS="STREAM", action='read')
+            read (666) diff
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'sum', status='unknown', ACCESS="STREAM", action='read')
+            read (666) sum
+            close (unit=666)
+
+            !open (unit = 666, form="unformatted", file=trim(path) // 'iprint', status='unknown', ACCESS="STREAM", action='read')
+            !read (666) iprint
+            !close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'maxfun', status='unknown', ACCESS="STREAM", action='read')
+            read (666) maxfunloc
+            close (unit=666)
+            if (maxfunloc .NE. maxfun) then
+                write (*,*) "Can't load different criteria!"
+                stop
+            end  if
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'N', status='unknown', ACCESS="STREAM", action='read')
+            read (666) N
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'np', status='unknown', ACCESS="STREAM", action='read')
+            read (666) np
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'npt', status='unknown', ACCESS="STREAM", action='read')
+            read (666) npt
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'nptm', status='unknown', ACCESS="STREAM", action='read')
+            read (666) nptm
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'nh', status='unknown', ACCESS="STREAM", action='read')
+            read (666) nh
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'kopt', status='unknown', ACCESS="STREAM", action='read')
+            read (666) kopt
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'nf', status='unknown', ACCESS="STREAM", action='read')
+            read (666) nf
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'i', status='unknown', ACCESS="STREAM", action='read')
+            read (666) i
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'kbase', status='unknown', ACCESS="STREAM", action='read')
+            read (666) kbase
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'nresc', status='unknown', ACCESS="STREAM", action='read')
+            read (666) nresc
+            close (unit=666)
+
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'ntrits', status='unknown', ACCESS="STREAM", action='read')
+            read (666) ntrits
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'itest', status='unknown', ACCESS="STREAM", action='read')
+            read (666) itest
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'j', status='unknown', ACCESS="STREAM", action='read')
+            read (666) j
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'k', status='unknown', ACCESS="STREAM", action='read')
+            read (666) k
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'ih', status='unknown', ACCESS="STREAM", action='read')
+            read (666) ih
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'nfsav', status='unknown', ACCESS="STREAM", action='read')
+            read (666) nfsav
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'ip', status='unknown', ACCESS="STREAM", action='read')
+            read (666) ip
+            close (unit=666)
+
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'jj', status='unknown', ACCESS="STREAM", action='read')
+            read (666) jj
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'knew', status='unknown', ACCESS="STREAM", action='read')
+            read (666) knew
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'jp', status='unknown', ACCESS="STREAM", action='read')
+            read (666) jp
+            close (unit=666)
+
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'ksav', status='unknown', ACCESS="STREAM", action='read')
+            read (666) ksav
+            close (unit=666)
+
+            open (unit = 666, form="unformatted", file=trim(path) // 'location', status='unknown', ACCESS="STREAM", action='read')
+            read (666) location
+            close (unit=666)
+#ifdef mpiBuild    
+            call mpi_barrier(mpi_comm_world, ierror)
+            if (ierror.ne.0) stop 'mpi problem173'
+#endif             
+        end if
+    end do
+    CALL SYSTEM_CLOCK(c2)
+    if (rank==0) write (*,*) "Time to load files " ,(c2-c1)/rate
     
     end subroutine loadState
 

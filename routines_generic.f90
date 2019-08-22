@@ -1794,11 +1794,29 @@
     END SUBROUTINE  Sort
     ! --------------------------------------------------------------------
     ! --------------------------------------------------------------------
-    !subroutine getmatrixinverse(matrix, dim, dimplus1, inverse)
+    subroutine getmatrixinverse(matrix, dim, dimplus1, inverse)
     !!Calculate a matrix inverse using the NAG routine. NAG routine gives answer in an odd format - this converts it to a usable format
-    !    !use  globalvalues ! only here so that I can access globalrank for an error message
-    !
-    !   implicit none
+    !    !use  globalvalues ! only here so that I can access globalrank for an error message    
+    implicit none
+            integer, intent(in) :: dim
+            integer, intent(in) :: dimplus1
+            real (kind=rk), intent(in) :: matrix(dim, dim)
+            real (kind=rk), intent(out) :: inverse(dim, dim)
+    real (kind=rk) :: Atemp(dim,dim), b(dim),  d 
+    integer:: i, indx(dim)
+    
+    Atemp = matrix
+    call ludcmp(Atemp,indx,d)
+    do i=1,dim
+        b = 0.0
+        b(i) = 1.0
+        call LUBKSB(Atemp,indx,b)
+        inverse(:,i) = b
+    end do
+    
+    !write(*,*) matmul(A,Ainv)
+    
+    
     !        integer, intent(in) :: dim
     !        integer, intent(in) :: dimplus1
     !        real (kind=rk), intent(in) :: matrix(dim, dim)
@@ -1861,7 +1879,7 @@
     !        end if
     !
     !
-    !  end subroutine getmatrixinverse
+      end subroutine getmatrixinverse
 
     integer function myMinloc(array, dim) ! The Fortan intrinsic has returned an error
     implicit none
@@ -1886,7 +1904,7 @@
     REAL(kind=rk), DIMENSION(:,:), INTENT(INOUT) :: p
     real(kind=rk):: time
     logical,intent(in) :: show
-    
+
     INTERFACE
     FUNCTION func(x)
     use header
@@ -1895,7 +1913,7 @@
     REAL(kind=rk) :: func
     END FUNCTION func
     END INTERFACE
-    
+
     INTEGER(kind=4), PARAMETER :: ITMAX= 700 !2000 !500 !1000
     REAL(kind=rk), PARAMETER :: TINY=1.0D-10
     INTEGER(kind=4) :: ihi,ndim
@@ -1919,8 +1937,8 @@
     !!$omp do
     do
         if (rank==0) then
-            if (rank==0) open (unit = 666, form="unformatted", file=trim(path) // 'guessP', status='replace', ACCESS="STREAM", action='write')         
-            if (rank==0) open (unit = 667, form="unformatted", file=trim(path) // 'guessY', status='replace', ACCESS="STREAM", action='write')              
+            if (rank==0) open (unit = 666, form="unformatted", file=trim(path) // 'guessP', status='replace', ACCESS="STREAM", action='write')
+            if (rank==0) open (unit = 667, form="unformatted", file=trim(path) // 'guessY', status='replace', ACCESS="STREAM", action='write')
             write (666) p
             write (667) y
             close (unit=666)
@@ -2251,8 +2269,9 @@
             IF (ABS(A(I,J)).GT.AAMAX) AAMAX=ABS(A(I,J))
         END DO
         IF (AAMAX.EQ.0.) then
-            write(*,'(A)') 'Singular matrix.'
-            read*
+            if (rank==0) write(*,'(A)') 'Singular matrix.'
+            write(*,*) A
+            stop
             ! pause
         ENDIF
         VV(I)=1./AAMAX
@@ -2373,7 +2392,7 @@
         xold(:)=x(:)
         fold=f
         p(:)=-fvec(:)
-        
+
         !inquire (iolength=requiredl) fjac
         !open (unit=201, form="unformatted", file='C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\jacob', ACCESS="STREAM", action='write', IOSTAT = ios)
         !write (201)  fjac
@@ -2741,4 +2760,313 @@
     end if
 
     end function
+    ! Returns the Generalised Moore-Penrose inverse of a matrix
+    ! Uses a translation of the matlab code in https://hal.archives-ouvertes.fr/hal-00276477/document
+    !calculated by finding the Cholesky decomposition.  Depends on c.
+    !Fast Computation of Moore-Penrose Inverse Matrices
+    ! by Pierre Courrieu
+    !SUBROUTINE MPinv(Ginv,G) !result(Ginv)
+    !USE BLAS95
+    !!USE mkl_precision
+    !real(kind=rk), dimension(:,:), intent(in) :: G
+    !real(kind=rk), dimension(size(G,dim=1),size(G,dim=2)), intent(out) :: Ginv
+    !integer transpose_check, n, m, r,k,loop
+    !REAL(KIND=rk), DIMENSION(:,:),ALLOCATABLE :: A !The correct shape matrix i.e. m by n matrix with m>n
+    !REAL(KIND=rk), DIMENSION(:), ALLOCATABLE ::dA
+    !REAL(KIND=rk) :: tol
+    !REAL(KIND=rk), DIMENSION(:,:), ALLOCATABLE :: L
+    !REAL(KIND=rk), DIMENSION(:,:), ALLOCATABLE :: Lselect, Mmat, tempmat1, tempmat2 !Workspace
+    !INTEGER :: istat
+    !CHARACTER(len=80) :: err_msg
+    !!initialise transpose
+    !transpose_check=0
+    !
+    !IF(size(G,dim=1)<size(G,dim=2)) THEN !We want a m by n matrix with m>n
+    !    ALLOCATE(A(size(G,dim=1),size(G,dim=1)),dA(size(G,dim=1)),L(size(G, dim=1),size(G, dim=1)),  STAT=istat, ERRMSG=err_msg)
+    !    IF (istat /= 0) THEN !Safety check
+    !        PRINT*,"ERROR IN 1st ALLOCATION IN MOORE-PENROSE INVERSE"
+    !        PRINT*,"    "
+    !        PRINT*,err_msg
+    !    END IF
+    !    transpose_check=1
+    !    n=size(G,dim=1)
+    !    m=size(G,dim=2)
+    !    call dgemm( G, G, A,'N', 'T')        !A=matmul(G,TRANSPOSE(G)) !so this is n by n
+    !ELSE
+    !    ALLOCATE(A(size(G,dim=2),size(G,dim=2)),dA(size(G,dim=2)),L(size(G, dim=2),size(G, dim=2)),  STAT=istat, ERRMSG=err_msg)
+    !    IF (istat /= 0) THEN !Safety check
+    !        PRINT*,"ERROR IN  1st ALLOCATION  IN MOORE-PENROSE INVERSE"
+    !        PRINT*,"    "
+    !        PRINT*,err_msg
+    !    END IF
+    !    m=size(G,dim=1)
+    !    n=size(G,dim=2)
+    !    call dgemm( G, G, A,'T', 'N') ! A=matmul(TRANSPOSE(G),G) !so this is n by n
+    !END IF
+    !
+    !! Full rank Cholesky factorization of A
+    !!Now pick up the diagonal in a matrix
+    !dA=0.0_rk
+    !DO loop=1,SIZE(A, DIM=1)
+    !    dA(loop)=A(loop,loop)
+    !END DO
+    !
+    !!Get the tolerance
+    !tol= minval(dA, mask=(dA>0))*1d-9;
+    !
+    !L=0.0_rk !initiakise
+    !r=0
+    !DO k=1,n
+    !    r=r+1
+    !    L(k:n,r:r)=A(k:n,k:k)-matmul(L(k:n,1:r-1),TRANSPOSE(L(k:k,1:r-1))) !Doing k:k makes it a 1 D array, so given how frequently I end up with stack overflows from temporaries assigned to stacks this is a bit of a time bomb (as #moments increases Pr(this crashes -->1), but right now I am lazy
+    !    !Note: for r=1, the substracted vector is zero
+    !    IF (L(k,r)>tol) THEN
+    !        L(k,r)=SQRT(L(k,r))
+    !        IF (k<n) THEN
+    !            L(k+1:n,r)=L(k+1:n,r)/L(k,r)
+    !        END IF
+    !    ELSE
+    !        r=r-1
+    !    END IF
+    !
+    !END DO
+    !
+    !ALLOCATE(Lselect(size(L,dim=1),r), Mmat(r,r), tempmat1(SIZE(L,dim=1),r),tempmat2(SIZE(L,dim=1),SIZE(L,dim=1)),  STAT=istat, ERRMSG=err_msg)
+    !IF (istat /= 0) THEN !Safety check
+    !    PRINT*,"ERROR IN ALLOCATION FOR CHOLESKY FACTORIZATION IN MOORE-PENROSE INVERSE"
+    !    PRINT*,"    "
+    !    PRINT*,err_msg
+    !END IF
+    !!Select the right part of L
+    !Lselect=L(:,1:r)
+    !!Finally, computation of the generalised inverse
+    !call dgemm(Lselect,Lselect,Mmat,'T')
+    !call inverse(Mmat,Mmat)     !Mmat=inv(matmul(TRANSPOSE(Lselect),Lselect))
+    !
+    !!The LM matrix:
+    !call dgemm(Lselect, Mmat, tempmat1)    !tempmat1=matmul(Lselect,Mmat)
+    !!the LMM matrix
+    !call dgemm(tempmat1,MMat,tempmat1)     !tempmat1=matmul(tempmat1,Mmat)
+    !!the LMM'L' matrix
+    !call dgemm(tempmat1,Lselect,tempmat2,'N','T')     !tempmat2=MATMUL(tempmat1,TRANSPOSE(Lselect))
+    !IF (TRANSPOSE_check==1) THEN
+    !    call dgemm(G,tempmat2,Ginv,'T')         !Ginv=MATMUL(TRANSPOSE(G),tempmat2)
+    !ELSE
+    !    call dgemm(G,tempmat2,Ginv,'n','T')                !Ginv=MATMUL(tempmat2,TRANSPOSE(G))
+    !END IF
+    !
+    !DEALLOCATE(Lselect, Mmat,tempmat1,tempmat2,L,A,da,  STAT=istat, ERRMSG=err_msg)
+    !IF (istat /= 0) THEN !Safety check
+    !    PRINT*,"ERROR IN DEALLOCATION FOR CHOLESKY FACTORIZATION IN MOORE-PENROSE INVERSE"
+    !    PRINT*,"    "
+    !    PRINT*,err_msg
+    !END IF
+    !
+    !PRINT*,"SUCCESFULLY CALCULATED MOORE-PENROSE INVERSE"
+    !
+    !end subroutine MPinv
+    !
+    !subroutine inverse(Ainv,A)
+    !real(kind=rk), dimension(:,:), intent(in) :: A
+    !real(kind=rk), dimension(size(A,1),size(A,2)), intent(out) :: Ainv
+    !real(kind=rk), dimension(size(A,1)) :: work  ! work array for LAPACK
+    !integer, dimension(size(A,1)) :: ipiv   ! pivot indices
+    !integer :: n, info
+    !! External procedures defined in LAPACK
+    !external DGETRF
+    !external DGETRI
+    !! Store A in Ainv to prevent it from being overwritten by LAPACK
+    !Ainv = A
+    !n = size(A,1)
+    !! DGETRF computes an LU factorization of a general M-by-N matrix A
+    !! using partial pivoting with row interchanges.
+    !call DGETRF(n, n, Ainv, n, ipiv, info)
+    !if (info /= 0) then
+    !    stop 'Matrix is numerically singular!'
+    !end if
+    !! DGETRI computes the inverse of a matrix using the LU factorization
+    !! computed by DGETRF.
+    !call DGETRI(n, Ainv, n, ipiv, work, n, info)
+    !if (info /= 0) then
+    !    stop 'Matrix inversion failed!'
+    !end if
+    !end subroutine
+    ! ---------------------------------------------------------------------------------------!
+    !Generate pseudo-random norma using   Marsaglia polar method base on
+    !https://rosettacode.org/wiki/Statistics/Normal_distribution#Fortran
+    ! ---------------------------------------------------------------------------------------!
+    subroutine genStdNorm(samples,NrmSeq)
+    implicit none
+    integer, intent(in) :: samples
+    real (kind=rk), intent(out) :: NrmSeq(samples)
+    integer :: n = 0
+    integer :: i, ind
+    real :: ur1, ur2, nr1, nr2, s
+
+    n = 0
+    do while(n < samples)
+        call random_number(ur1)
+        call random_number(ur2)
+        ur1 = ur1 * 2.0 - 1.0
+        ur2 = ur2 * 2.0 - 1.0
+        s = ur1*ur1 + ur2*ur2
+        if(s >= 1.0) cycle
+        nr1 = ur1 * sqrt(-2.0*log(s)/s)
+        nr2 = ur2 * sqrt(-2.0*log(s)/s)
+        if (n+2<=samples) then
+            NrmSeq(n+1:n+2) = (/nr1, nr2/) 
+        else
+            NrmSeq(n+1) = nr1
+        end if 
+        n = n + 2
+    end do
+    end subroutine
+    !function ols(y, x, n, k) result (beta)
+    !
+    !implicit none
+    !
+    !external DGELS
+    !
+    !integer, intent(in) :: n, k
+    !real(kind=rk), intent(in) :: y(:), x(:, :)
+    !integer :: info, lwork
+    !real(kind=rk) :: beta(k)
+    !real(kind=rk), allocatable :: work(:)
+    !allocate(work(100 * n * k))
+    !lwork = 100 * n * k
+    !
+    !call DGELS('No transpose', n, k, 1, x, n, y, n, work, lwork, info)
+    !beta = y(1:k)
+    !deallocate(work)
+    !
+    !end function ols
+
+    !-----------------------------------------------------------------------------------!
+    !-----------------------------------------------------------------------------------!
+
+
+    subroutine doReg(y, x, n, t, k, mask, ols, beta)
+    implicit none
+
+    integer, intent(in) :: n, t, k
+    real (kind=rk), intent(in) :: y(t, n)
+    real (kind=rk), intent(in) :: x(t, n, k)
+    logical, intent(in) :: mask(t,n), ols
+    real (kind=rk), intent(out) :: beta(k, 1)
+
+    ! For programme
+    real (kind=rk) :: meany(n), meanx(n,k), grandMeanY, grandMeanX(k)
+    real (kind=rk) :: yd(t, n) ! yd is for demeaned
+    real (kind=rk) :: xd(t, n, k) !xd is for demeaned
+    real (kind=rk) :: runningCountY, runningCountX(k), GrandRunningCountY, GrandRunningCountX(k)
+    integer :: ixN, ixT, ixK, ixsmalln, bigN, ixBigN
+    real (kind=rk), allocatable :: bigY(:, :), bigX(:,:)
+    real (kind=rk) ::  xPxinverse(k,k), xPx(k,k), xPy(k,1)
+    integer, parameter :: NineNineNine = 999
+
+
+    !Count the number of active observations
+    bigN = 0
+    do ixN = 1, n
+        do ixT = 1, t
+            if (mask(ixT,ixN))  bigN = bigN + 1
+        end do
+    end do
+
+    GrandRunningCountY = 0.0_rk
+    GrandRunningCountX = 0.0_rk
+
+    ! First get mean across t for all n
+    do ixN = 1, n
+        ixsmalln = 0
+        runningCountY = 0.0_rk
+        runningCountX = 0.0_rk
+
+        ! Get means across t
+        do ixT = 1, t
+            if (mask(ixT,ixN)) then
+                runningCountY = runningCountY + y(ixT,ixN)
+                GrandRunningCountY = GrandRunningCountY + y(ixT,ixN)
+                do ixK = 1, k
+                    runningCountX(ixK) =  runningCountX(ixK) +  x(ixT, ixN,ixK)
+                    GrandRunningCountX(ixK) =  GrandRunningCountX(ixK) +  x(ixT, ixN,ixK)
+                end do
+                ixsmalln = ixsmalln + 1
+            end if !  if (mask(ixN, ixT) then
+        end do
+
+        ! Save means
+        meany(ixN) = runningCountY / real(ixsmalln, rk)
+        do ixK = 1, k
+            meanx(ixN,ixK) =  runningCountX(ixK) / real(ixsmalln, rk)
+        end do
+    end do
+
+    ! Get grand means
+    grandMeanY = GrandRunningCountY / bigN
+    do ixK = 1, k
+        grandMeanX(ixK) =  GrandRunningCountX(ixK) / bigN
+    end do
+
+
+    ! Get demeaned data if we're not doing ols
+    do ixN = 1, n
+        do ixT = 1, t
+            if (mask(ixT,ixN)) then
+                if (ols) then
+                    yd(ixT,ixN) = y(ixT,ixN)
+                else
+                    yd(ixT,ixN) = y(ixT,ixN) - meany(ixN) + grandMeanY
+                end if
+
+
+                do ixK = 1, k
+                    if (ols) then
+                        xd(ixT, ixN, ixK)  = x(ixT, ixN, ixK)
+                    else
+                        xd(ixT, ixN, ixK)  = x(ixT, ixN, ixK)- meanx(ixN,ixK)  + grandMeanX(ixK)
+                    end if
+
+                end do
+            else
+                yd(ixT,ixN) = -NineNineNine
+                do ixK = 1, k
+                    xd(ixT,ixN, ixK)  =  -NineNineNine
+                end do
+            end if
+        end do
+    end do
+
+    ! Allocate
+    allocate (bigY(bigN, 1))
+    allocate(bigX(bigN,k))
+
+    ixBigN = 0
+    ! Populte long vectors
+    do ixN = 1, n
+        do ixT = 1, t
+            if (mask(ixT,ixN)) then
+                ixBigN = ixBigN + 1
+                bigY(ixBigN, 1) = yd(ixT,ixN)
+                do ixK = 1, k
+                    bigX(ixBigN,ixK) = xd(ixT, ixN, ixK)
+                end do
+            end if
+
+        end do
+    end do
+
+    ! Get the regression coefficients
+    xPx = matmul(transpose(bigX), bigX)
+    xPy = matmul(transpose(bigX), bigY)
+    call getmatrixinverse(xPx, k, k + 1, xPxinverse)
+    beta = matmul( xPxinverse, xPy)
+
+
+    deallocate(bigY)
+    deallocate(bigX)
+
+
+    end subroutine doReg
+
     end module routines_generic

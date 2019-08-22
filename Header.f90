@@ -8,9 +8,9 @@
 
     integer, parameter :: numPointsType = TYPES_SIZE !1!
 #ifdef _WIN64      
-    integer, parameter :: numPointsA = 30!10!30!100!50!
+    integer, parameter :: numPointsA =   30 !90 !90 !  !140 !110 !120 !30 !30 !120!10!30!100!50!
 #else
-    integer, parameter :: numPointsA = 30!120!10!30!100!50!
+    integer, parameter :: numPointsA = 120!120!10!30!100!50!
 #endif 
 
     integer, parameter :: numPointsProd = PROD_SIZE !5!10 !
@@ -18,27 +18,35 @@
     integer, parameter :: numAIME = 8!numPointsA  !10 !5
     integer, parameter :: numPointsL = 2
     integer, parameter :: numPointsSPA = 11
-    integer, parameter :: numSims =  1016!  5000!250! 10000!
+    integer, parameter :: numSims =  10000 !1016!  5000!250! 10000!
     integer, parameter :: startAge =  52 !20!
-    integer, parameter :: endAge = 105
+    integer, parameter :: weeksYear = 52
+    integer, parameter :: weeksWorking = 48
+    integer, parameter :: endAge = 101
     integer, parameter :: Tperiods = endAge -startAge
     integer, parameter :: Tretire =60 -startAge +1
-    integer, parameter :: TrueSPA = 1
+    integer, protected :: TrueSPA = 1
     integer, parameter :: TendRI = Tretire +  numPointsSPA - 1!CHANGE THIS ONE FOR RE
     integer, parameter :: normBnd = 4
-    integer, protected  :: dimEstimation = 6
-    integer, parameter :: spouseretire = 65 -startAge+1
+    integer, protected  :: dimEstimation = 4
+    !integer, parameter :: spouseretire = 65 -startAge+1
     integer, parameter :: stopwrok = 80 -startAge+1
+    integer, parameter :: obsInitDist = 838 !874
+    integer, parameter :: numMoments = 48
     integer :: modelChoice
     integer, protected :: EndPeriodRI
     logical, protected :: uncerRE
     logical, parameter :: counterFact = .TRUE.!.FALSE. !
 #ifdef _WIN64          
     character(len=250), parameter :: pathMoments = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\moments\'
-    character(len=250), parameter :: pathErrors = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\'
+    !character(len=250), parameter :: pathErrors = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\'
+    character(len=250), parameter :: pathInputs = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\input\'   
+    character(len=250), parameter :: path_bobyqa = 'C:\Users\Uctphen\bobyqa\'
 #else
     character(len=250), parameter :: pathMoments = '~/FortrCodeRI/moments/'
-    character(len=250), parameter :: pathErrors = '~/FortrCodeRI/Errors/'
+    !character(len=250), parameter :: pathErrors = '~/FortrCodeRI/Errors/'
+    character(len=250), parameter :: pathInputs = '~/FortrCodeRI/input/'  
+    character(len=250), parameter :: path_bobyqa = '/scratch/scratch/uctphen/store/'
 #endif 
     character(len=250), protected :: pathDataStore
     character(len=250), protected :: path
@@ -48,17 +56,20 @@
         real (kind=rk) :: gamma
         real (kind=rk) :: r
         real (kind=rk) :: beta
-        real (kind=rk) :: sigma
         real (kind=rk) :: mu
-        real (kind=rk) :: rho
+        real (kind=rk) :: rho(numPointsType)
+        real (kind=rk) :: sigma(numPointsType)
+        real (kind=rk) :: sigma_int(numPointsType)
+        real (kind=rk) :: fracType(numPointsType)
+        real (kind=rk) :: ERA(numPointsType)
         real (kind=rk) :: nu
         !Instutional
         real (kind=rk) :: delta(numPointsType,3)
-        real (kind=rk) :: pension
+        real (kind=rk) :: pension(numPointsType,2)
         real (kind=rk) :: hrsWrk
-        real (kind=rk) :: spouseInc(numPointsType)
+        real (kind=rk) :: spouseInc(numPointsType,Tperiods)
         real (kind=rk) :: minCons
-        real (kind=rk) :: db(2)
+        real (kind=rk) :: db(numPointsType,2)
         real (kind=rk) :: startA
         real (kind=rk) :: thetab
         real (kind=rk) :: k
@@ -86,7 +97,7 @@
         real (kind=rk) :: benefit(Tperiods)
         real (kind=rk) :: fc(Tperiods)
         real (kind=rk) :: maxInc(numPointsType,Tperiods)
-        real (kind=rk) :: initialAssets(1016)
+        real (kind=rk) :: initialAssets(obsInitDist,2)
         real (kind=rk) :: mortal(Tperiods+1)
         real (kind=rk) :: Simy(Tperiods, numSims)
         real (kind=rk) :: unemploy(numPointsType,numPointsProd)
@@ -115,19 +126,18 @@
     integer :: rank, ierror, procsize
     integer, parameter :: mpiDim =  numPointsA * numAIME
 
-    !! Test controls
-    logical, parameter :: fullLifeCycle = .FALSE.
-    !logical, parameter :: intermediateToFile = .FALSE.
-
     real (kind=rk), protected :: timeHack
     REAL (kind=rk), protected :: rate
-    INTEGER, protected  :: c1,c2,cr,cm
+    INTEGER (KIND=8) , protected  :: c1,c2,cr,cm
 
     contains
+    ! ---------------------------------------------------------------------------------------------------------!
+    !!Set global proctied variables
+    !----------------------------------------------------------------------------------------------------------!
     subroutine setModel
     implicit none
-
-#ifdef mpi
+    CHARACTER(len=32) :: arg
+#ifdef mpiBuild
     include 'mpif.h'
 #endif 
     ! First initialize the system_clock
@@ -143,10 +153,11 @@
         read (*,*) modelChoice
     end if
 #else
-    modelChoice = 1
+    CALL get_command_argument(1, arg)
+    read(arg(1:1),'(i)') modelChoice
 #endif 
 
-#ifdef mpi
+#ifdef mpiBuild
     call MPI_Bcast( modelChoice, 1, MPI_INTEGER ,0, mpi_comm_world, ierror)
     if (ierror.ne.0) stop 'mpi problem171'
 #endif     
@@ -187,5 +198,9 @@
     end select
 
     end subroutine
-
+    subroutine setSPA(newSPA)
+    implicit none
+    integer, intent(in) :: newSPA
+    TrueSPA=newSPA
+    end subroutine
     end module Header
