@@ -50,10 +50,10 @@
             !This should be discounted to average not sum
             upper(typeSim,t+1) = upper(typeSim,t) + grids%maxInc(typeSim,t)
             if (t <=params%ERA(typeSim)) then
-                a = ((upper(typeSim,t+1)-3700)/t)/(numAIME-1) !-3700
+                a = ((upper(typeSim,t+1))/t)/(numAIME-1) !-3700
 
                 grids%AIMEgrid(typeSim,t,:) = a*(/(i,i=0,numAIME-1)/)
-                grids%AIMEgrid(typeSim,t,:) = grids%AIMEgrid(typeSim,t,:)+3700! +3700
+                grids%AIMEgrid(typeSim,t,:) = grids%AIMEgrid(typeSim,t,:)! +3700
             else
                 grids%AIMEgrid(typeSim,t,:) = grids%AIMEgrid(typeSim,t-1,:)
             end if
@@ -1735,36 +1735,6 @@
         Agrid(ixt, :) = Agrid(1, :)
     end do
 
-    !!Create asset grid
-    !if (numPointsA == 30) then
-    !    growth = 0.325
-    !elseif (numPointsA == 50) then
-    !    growth = 0.175
-    !elseif (numPointsA == 75) then
-    !    growth = 0.10
-    !elseif (numPointsA == 120) then
-    !    growth = 0.06
-    !elseif (numPointsA == 140) then
-    !    growth = 0.5
-    !else
-    !    growth = 0.5
-    !
-    !end if
-    !do ixt = 1, Tperiods+1
-    !    !!span = maxA(ixt)/ (numPointsA-1)
-    !    !!Agrid(ixt, :) = span*(/(i,i=0,numPointsA-1)/)
-    !    !
-    !    !span = (log(1.0+maxmaxA)-log(1.0))/ (numPointsA-1) !maxA(ixt)
-    !    !loggrid = log(1.0)+span*(/(i,i=0,numPointsA-1)/)
-    !    !Agrid(ixt, :) = (/((exp(loggrid(i))-1.0),i=1,numPointsA)/)
-    !    !
-    !    !!span =  (log(1.0+log(1.0+log(1+maxA(ixt)))) - log(1.0+log(1.0+log(1.0))) )/ (numPointsA-1)
-    !    !!loggrid = log(1.0+log(1.0+log(1.0))) + span*(/(i,i=0,numPointsA-1)/)
-    !    !!Agrid(ixt, :) = (/(exp(exp(exp(loggrid(i))-1.0)-1.0)-1.0,i=1,numPointsA)/) !exp(exp(exp(loggrid)-1)-1)-1
-    !
-    !    call getnodes(Agrid(ixt, :), 0.0_rk, maxmaxA, numPointsA, growth)
-    !end do
-    !test = sum(Agrid(1, :))/size(Agrid(ixt, :))
     contains
     function func(growth)
     implicit none
@@ -1840,7 +1810,8 @@
     real(kind=rk), allocatable :: values(:), ccpMat(:,:,:), eye(:,:)
     real(kind=rk), allocatable :: const(:,:,:), GrossUtil(:,:)
     real(kind=rk), allocatable  ::  parameters(:), ccp(:), test(:), utilVec(:)
-    integer, save :: saveDim(2,numPointsL), lastixT = 0, unemp, div, d
+    integer, save :: saveDim(2,numPointsL), lastixT = 0, unemp, div, d, locl, locA1
+    integer, allocatable :: rang(:)
     real(kind=rk), allocatable, save :: locinitialGuessRI(:,:)
     logical :: converged, unchanged
     character (len=2000) :: text(2)
@@ -1857,6 +1828,9 @@
     labourChoices=mod(ixy,2)*numPointsL+(1-mod(ixy,2))*1
     allocate(maxA(labourChoices), const(labourChoices,numPointsA,grids%supportSPA(ixt)))
     maxA(1) = numPointsA !default to all asset level possible
+    !if (ixy == 4 .AND. ixt ==14 .AND. ixAIME == 2) then
+    !    write(*,*) 'stop'
+    !end if 
     do ixL = 0,(labourChoices-1),1           ! points of income choice
         ! Value of income and information for optimisation
         if (ixa1 > numPointsA) maxA(ixl) = numPointsA
@@ -1916,7 +1890,7 @@
 
     dimD = sum(maxA)!labourChoices*(ixa1-1)
     dim = grids%supportSPA(ixt)*dimD !*labourChoices*(ixa1-1)
-    allocate(values(dim+1),parameters(dim),ccp(dim),ccpMat(grids%supportSPA(ixt),labourChoices,maxmaxA), GrossUtil(dimD,grids%supportSPA(ixt)),test(dimD),utilVec(dim))
+    allocate(values(dim+1),parameters(dim),ccp(dim),ccpMat(grids%supportSPA(ixt),labourChoices,maxmaxA), GrossUtil(dimD,grids%supportSPA(ixt)),test(dimD),utilVec(dim),rang(dimd))
     !copy into util vec for comparision with edge solutions
     ixl =1
     ixa1 = 0
@@ -2001,19 +1975,34 @@
 
     !!compare to "edge" solutions 9should be corner but too hard for now
     topUtil = 0
-    do i = 1,-grids%supportSPA(ixt)! numPointsSPA-grids%supportSPA(ixt)+1,numPointsSPA
-        topUtil = topUtil + grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+i)*dot_product(ccp,utilvec((/(i+j*grids%supportSPA(ixt),j=0,dimd-1)/))) ! utilvec((i-1)*grids%supportSPA(ixt)+1:i*grids%supportSPA(ixt)))
+    do i = 1,grids%supportSPA(ixt)! numPointsSPA-grids%supportSPA(ixt)+1,numPointsSPA
+        rang = (/(i+j*grids%supportSPA(ixt),j=0,dimd-1)/)
+        topUtil = topUtil + grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+i)*dot_product(ccp((/(i+j*grids%supportSPA(ixt),j=0,dimd-1)/)),utilvec((/(i+j*grids%supportSPA(ixt),j=0,dimd-1)/))) ! utilvec((i-1)*grids%supportSPA(ixt)+1:i*grids%supportSPA(ixt)))
     end do
     unchanged = .true.
+    locl =1
+    locA1 = 0
     do i=1,dimD
+        locA1 = locA1 + 1
+        if (locA1 > maxa(locl)) then
+            locl = locl+1
+            locA1=1
+        end if
         if (dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA), utilvec((i-1)*grids%supportSPA(ixt)+1:i*grids%supportSPA(ixt))) > toputil  ) then
             topUtil = dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA), utilvec((i-1)*grids%supportSPA(ixt)+1:i*grids%supportSPA(ixt)))
             ccp = 0.0
             ccp((i-1)*grids%supportSPA(ixt)+1:i*grids%supportSPA(ixt)) = 1.0
             unchanged = .false.
+            GrossUtil = 0.0
+            do j = 1,grids%supportSPA(ixt)
+                GrossUtil(i,j) = const(locl,locA1,j)
+            end do
         end if
     end do
-    !if (unchanged) write (*,*) 'Un hcnaged!'
+    if (unchanged) then
+        write (*,*) 'Un hcnaged!'
+        !stop 
+    end if 
 
     !!Cache for use on next round
     if (ixy < numPointsY) then

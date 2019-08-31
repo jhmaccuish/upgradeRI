@@ -283,9 +283,10 @@
         do typeSim = 1, numPointsType
             call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
         end do
-        do lamb=7,7
+        do lamb=1,1 !3
             params%lambda=10.0**-lamb
             if (rank==0) write (*,*) "Lambda is ", params%lambda
+            if (rank==0) write (*,*) params%nu, params%beta, params%gamma, params%thetab
             if (recal) call solveValueFunction( params, grids, .TRUE., .TRUE. )
             !simulate
 #ifdef mpiBuild
@@ -451,7 +452,7 @@
         if (ierror.ne.0) stop 'mpi problem180'
 #endif   
     elseif (action .EQ. 4) then
-        do lamb=4,8
+        do lamb=1,1
             params%lambda=10.0**-lamb
             write (*,*) "Lambda is ", params%lambda
             do typeSim = 1, numPointsType

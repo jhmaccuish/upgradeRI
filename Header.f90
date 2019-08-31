@@ -8,7 +8,7 @@
 
     integer, parameter :: numPointsType = TYPES_SIZE !1!
 #ifdef _WIN64      
-    integer, parameter :: numPointsA =   30 !90 !90 !  !140 !110 !120 !30 !30 !120!10!30!100!50!
+    integer, parameter :: numPointsA =   90 !30 !90 !  !140 !110 !120 !30 !30 !120!10!30!100!50!
 #else
     integer, parameter :: numPointsA = 120!120!10!30!100!50!
 #endif 
@@ -18,7 +18,7 @@
     integer, parameter :: numAIME = 8!numPointsA  !10 !5
     integer, parameter :: numPointsL = 2
     integer, parameter :: numPointsSPA = 11
-    integer, parameter :: numSims =  10000 !1016!  5000!250! 10000!
+    integer, parameter :: numSims =  50000 !1016!  5000!250! 10000!
     integer, parameter :: startAge =  52 !20!
     integer, parameter :: weeksYear = 52
     integer, parameter :: weeksWorking = 48
