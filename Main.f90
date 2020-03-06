@@ -41,26 +41,26 @@
     !For regression
     real (kind=rk):: yreg(24, 3*numsims)
     real (kind=rk) :: xreg(24, 3*numsims, 24+2)
-    logical :: mask(24,3*numsims), ols
+    logical :: mask(24,3*numsims) !, ols
     real (kind=rk) :: beta(24+2, 1)
     real (kind=rk), allocatable :: yreg2(:, :)
     real (kind=rk), allocatable :: xreg2(:, :, :)
     logical, allocatable :: mask2(:,:)
 
-    real (kind=rk) :: start, finish, moments(2,24),weights(2,24)
-    real (kind=rk), allocatable :: y(:), p(:,:)
+    real (kind=rk) :: start, finish, moments(3,24),weights(3,24)
+    real (kind=rk), allocatable :: y(:) !, p(:,:)
     integer :: action, ios, requiredl, typeSim
     integer ::SPA,i, lamb
     logical :: delCache
-    INTEGER(kind=4) :: iter
+    !INTEGER(kind=4) :: iter
     real (kind=rk) :: gmmScorce
-    real (kind=rk) :: indxrk
-    real (kind=rk) :: optLambda
+    !real (kind=rk) :: indxrk
+    !real (kind=rk) :: optLambda
     logical:: recal = .true.
     logical :: file_exists
     real (kind=rk), allocatable :: x(:), xl(:), xu(:)
     real (kind=rk) :: rhobeg, rhoend
-    real (kind=rk) :: importStructure(6,24*3*numsims), amax(Tperiods), medianA
+    real (kind=rk) :: importStructure(6,24*3*numsims),  medianA !,amax(Tperiods)
     real (kind=rk), allocatable :: sterrs(:)
     character(len=1024) :: outFile
     integer :: j, dimAboveMed, counter
@@ -188,7 +188,7 @@
 
 #ifdef _WIN64
     if (rank == 0) then
-        write (*,*) "Press 1 to check GMM values, 2 for single run, 3 to estimate, 4 repeat regressions"
+        write (*,*) "Press 1 to check GMM values, 2 for single run, 3 to estimate, 4 repeat regressions, 5 Calculate SE"
         read (*,*) action
     end if
 #ifdef mpiBuild
@@ -206,6 +206,10 @@
     read (1002, *) moments(2,:)
     read (1003, *) weights(1,:)
     read (1004, *) weights(2,:)
+    if (dimEstimation >= 5) then
+        moments(3,1) = 0.6492912
+        weights(3,1) = 0.0131797
+    end if
     weights = 1/weights
     close (unit=1001)
     close (unit=1002)
@@ -279,54 +283,60 @@
         !    if (rank==0) write (*,*), 'GMM Criteria is ', gmmScorce
         !end do
     else if (action .EQ. 2) then
-
         do typeSim = 1, numPointsType
             call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
         end do
-        do lamb=1,1 !3
-            params%lambda=10.0**-lamb
-            if (rank==0) write (*,*) "Lambda is ", params%lambda
-            if (rank==0) write (*,*) params%nu, params%beta, params%gamma, params%thetab
-            if (recal) call solveValueFunction( params, grids, .TRUE., .TRUE. )
-            !simulate
-#ifdef mpiBuild
-            call mpi_barrier(mpi_comm_world, ierror)
-            if (ierror.ne.0) stop 'mpi problem180'
-#endif         
-            if (rank == 0) then
-                delCache = .FALSE.
-                if (modelChoice>1) then
-                    if (counterFact) then
-                        call simWithUncer(params, grids, grids%Simy, cpath, apath, vpath, lpath, ypath, AIME, 1, .FALSE. ) !5
-                        call writetofile(grids, ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
-                        !call writetofileByType(grids,params,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
-                    else
-                        delCache = .FALSE.
-                        do SPA =1,3
-                            write (*,*) "Sim True SPA", 59+SPA
-                            if (SPA==3) delCache = .TRUE.
-                            call simWithUncer(params, grids, grids%Simy, cpath, apath, vpath, lpath, ypath, AIME, SPA, .FALSE. )
-                            combinedData(SPA,:,:) = apath(52-startAge+1:75-startAge+1,:)*(2*lpath(52-startAge+1:75-startAge+1,:)-1)
-                            call writetofileAge(grids,params,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME, 59+SPA)
-                        end do
-                        inquire (iolength=requiredl) combinedData
-                        !print *, path
-                        !print *, trim(path) // 'CombinedData'
-                        open (unit=201, form="unformatted", file=trim(path) // 'CombinedData', ACCESS="STREAM", action='write', IOSTAT = ios)
-                        write (201)  combinedData
-                        close( unit=201)
-                    end if
-                else
-                    call simWithUncer(params, grids, grids%Simy, cpath, apath, vpath, lpath, ypath, AIME, TrueSPA, .FALSE. )
-                    !do i = 1, Tperiods
-                    !    amax(i) =  maxval( grids%Agrid(1,1, apath(i,:) ))
-                    !end do
-                    !write (*,*) maxval(amax)
-                    call writetofile(grids,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
-                    !call writetofileByType(grids,params,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
-                end if
-            end if
-        end do
+        lamb=  12! 9 !8 !0!  6 ! 5 !3 ! 0! 2! 4 !8 !3 !1 !2
+        params%lambda=10.0**-lamb
+        write (*,*) params%lambda
+        call solveOuterLoop(params, grids )
+        !        do typeSim = 1, numPointsType
+        !            call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
+        !        end do
+        !        do lamb=6,6 !3 !1 !2
+        !            params%lambda=10.0**-lamb
+        !            if (rank==0) write (*,*) "Lambda is ", params%lambda
+        !            if (rank==0) write (*,*) params%nu, params%beta, params%gamma, params%thetab
+        !            if (recal) call solveValueFunction( params, grids, .TRUE., .TRUE. )
+        !            !simulate
+        !#ifdef mpiBuild
+        !            call mpi_barrier(mpi_comm_world, ierror)
+        !            if (ierror.ne.0) stop 'mpi problem180'
+        !#endif
+        !            if (rank == 0) then
+        !                delCache = .FALSE.
+        !                if (modelChoice>1) then
+        !                    if (counterFact) then
+        !                        call simWithUncer(params, grids, grids%Simy, cpath, apath, lpath, ypath, AIME, 1, .FALSE. ) !5 !vpath,
+        !                        call writetofile(grids, ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
+        !                        call writetofileByType(grids,params,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
+        !                    else
+        !                        delCache = .FALSE.
+        !                        do SPA =1,3
+        !                            write (*,*) "Sim True SPA", 59+SPA
+        !                            if (SPA==3) delCache = .TRUE.
+        !                            call simWithUncer(params, grids, grids%Simy, cpath, apath, lpath, ypath, AIME, SPA, .FALSE. ) !vpath,
+        !                            combinedData(SPA,:,:) = apath(52-startAge+1:75-startAge+1,:)*(2*lpath(52-startAge+1:75-startAge+1,:)-1)
+        !                            call writetofileAge(grids,params,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME, 59+SPA)
+        !                        end do
+        !                        inquire (iolength=requiredl) combinedData
+        !                        !print *, path
+        !                        !print *, trim(path) // 'CombinedData'
+        !                        open (unit=201, form="unformatted", file=trim(path) // 'CombinedData', ACCESS="STREAM", action='write', IOSTAT = ios)
+        !                        write (201)  combinedData
+        !                        close( unit=201)
+        !                    end if
+        !                else
+        !                    call simWithUncer(params, grids, grids%Simy, cpath, apath,  lpath, ypath, AIME, TrueSPA, .FALSE. ) !vpath,
+        !                    !do i = 1, Tperiods
+        !                    !    amax(i) =  maxval( grids%Agrid(1,1, apath(i,:) ))
+        !                    !end do
+        !                    !write (*,*) maxval(amax)
+        !                    call writetofile(grids,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
+        !                    call writetofileByType(grids,params,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
+        !                end if
+        !            end if
+        !        end do
     elseif (action .EQ. 3) then
         if (TrueSpa .NE. 1) then
             write (*,*) "Only estimate with SPA = 60"
@@ -443,7 +453,7 @@
         call solveValueFunction( params, grids, .FALSE., .FALSE. )
 
         if (rank==0) then
-            call simWithUncer(params, grids, grids%Simy, cpath, apath, vpath, lpath, ypath ,AIME, TrueSPA, .TRUE.)
+            call simWithUncer(params, grids, grids%Simy, cpath, apath, lpath, ypath ,AIME, TrueSPA, .TRUE.) !vpath,
             call writetofile(grids,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
             !call writetofileByType(grids,params,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
         end if
@@ -452,7 +462,7 @@
         if (ierror.ne.0) stop 'mpi problem180'
 #endif   
     elseif (action .EQ. 4) then
-        do lamb=1,1
+        do lamb= 4,4!3,3
             params%lambda=10.0**-lamb
             write (*,*) "Lambda is ", params%lambda
             do typeSim = 1, numPointsType
@@ -467,7 +477,7 @@
                     if (recal) call solveValueFunction( params, grids, .TRUE., .TRUE. )
                 end if
                 if (rank == 0) then
-                    call simWithUncer(params, grids, grids%Simy, cpath, apath, vpath, lpath, ypath, AIME, TrueSPA, .false. )
+                    call simWithUncer(params, grids, grids%Simy, cpath, apath, lpath, ypath, AIME, SPA, .false. ) ! vpath,
                     combinedData(SPA,:,:) = apath(52-startAge+1:75-startAge+1,:)*(2*lpath(52-startAge+1:75-startAge+1,:)-1)
                     call writetofileAge(grids,params,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME, 59+SPA)
                     do i = 1, 24
@@ -497,6 +507,8 @@
 
                 importStructure = 0.0
                 medianA = median(xreg(9,:,2))
+                medianA = 24846.00
+                write (*,*) "median assets", medianA
                 dimAboveMed = count(xreg(9,:,2)>medianA)
                 write (*,*) dimAboveMed
                 counter = 0

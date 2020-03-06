@@ -4,9 +4,13 @@
     module routines_generic
     !use precisions
     use Header
-!#include "../globalMacros.txt"
+    !#include "../globalMacros.txt"
 #include "globalMacros.txt"
-    
+    interface entropy
+    module procedure entropyRK
+    module procedure entropyHP
+    end interface entropy
+
     contains
     subroutine linearinterp1(xgrid, ygrid, length, xval, yval, extrapbot, extraptop)
     ! Subroutine for linear interpolation
@@ -1790,11 +1794,29 @@
     END SUBROUTINE  Sort
     ! --------------------------------------------------------------------
     ! --------------------------------------------------------------------
-    !subroutine getmatrixinverse(matrix, dim, dimplus1, inverse)
+    subroutine getmatrixinverse(matrix, dim, dimplus1, inverse)
     !!Calculate a matrix inverse using the NAG routine. NAG routine gives answer in an odd format - this converts it to a usable format
     !    !use  globalvalues ! only here so that I can access globalrank for an error message
-    !
-    !   implicit none
+    implicit none
+    integer, intent(in) :: dim
+    integer, intent(in) :: dimplus1
+    real (kind=rk), intent(in) :: matrix(dim, dim)
+    real (kind=rk), intent(out) :: inverse(dim, dim)
+    real (kind=rk) :: Atemp(dim,dim), b(dim),  d
+    integer:: i, indx(dim)
+
+    Atemp = matrix
+    call ludcmp(Atemp,indx,d)
+    do i=1,dim
+        b = 0.0
+        b(i) = 1.0
+        call LUBKSB(Atemp,indx,b)
+        inverse(:,i) = b
+    end do
+
+    !write(*,*) matmul(A,Ainv)
+
+
     !        integer, intent(in) :: dim
     !        integer, intent(in) :: dimplus1
     !        real (kind=rk), intent(in) :: matrix(dim, dim)
@@ -1857,7 +1879,7 @@
     !        end if
     !
     !
-    !  end subroutine getmatrixinverse
+    end subroutine getmatrixinverse
 
     integer function myMinloc(array, dim) ! The Fortan intrinsic has returned an error
     implicit none
@@ -1880,7 +1902,9 @@
     REAL(kind=rk), INTENT(IN) :: ftol,abtol
     REAL(kind=rk), DIMENSION(:), INTENT(INOUT) :: y
     REAL(kind=rk), DIMENSION(:,:), INTENT(INOUT) :: p
+    real(kind=rk):: time
     logical,intent(in) :: show
+
     INTERFACE
     FUNCTION func(x)
     use header
@@ -1889,7 +1913,8 @@
     REAL(kind=rk) :: func
     END FUNCTION func
     END INTERFACE
-    INTEGER(kind=4), PARAMETER :: ITMAX=500 !1000
+
+    INTEGER(kind=4), PARAMETER :: ITMAX= 700 !2000 !500 !1000
     REAL(kind=rk), PARAMETER :: TINY=1.0D-10
     INTEGER(kind=4) :: ihi,ndim
     REAL(kind=rk), DIMENSION(size(p,2)) :: psum
@@ -1899,6 +1924,7 @@
     SUBROUTINE amoeba_private
     IMPLICIT NONE
     INTEGER(kind=4) :: i,ilo,inhi
+    integer :: c2
     REAL(kind=rk) :: rtol,ysave,ytry,ytmp
     IF((size(p,2) == size(p,1) - 1) .and. (size(p,2) == size(y) -1))THEN
         ndim = size(y) - 1
@@ -1910,6 +1936,19 @@
     !!$OMP PARALLEL default(shared)
     !!$omp do
     do
+        if (rank==0) then
+            if (rank==0) open (unit = 666, form="unformatted", file=trim(path) // 'guessP', status='replace', ACCESS="STREAM", action='write')
+            if (rank==0) open (unit = 667, form="unformatted", file=trim(path) // 'guessY', status='replace', ACCESS="STREAM", action='write')
+            write (666) p
+            write (667) y
+            close (unit=666)
+            close (unit=667)
+            CALL SYSTEM_CLOCK(c2)
+            write (*,*) (c2-c1)/rate
+            if ((c2-c1)/rate >300) stop
+            !call cpu_time(time)
+            !if (time-timeHack >300) stop
+        end if
         ilo=iminloc(y(:))
         ihi=imaxloc(y(:))
         ytmp=y(ihi)
@@ -1926,19 +1965,19 @@
             RETURN
         end if
         if (iter >= ITMAX) then
-            !write(*,*),  'ERROR: ITMAX exceeded in amoeba' 
+            if (rank==0) write(*,*),  'ITMAX exceeded in amoeba'
             call swap_scalar(y(1),y(ilo))
             call swap_vector(p(1,:),p(ilo,:))
             return
-        end if 
-        ytry=amotry(-1.0D0)
+        end if
+        ytry=amotry(-1.0E0_rk)
         iter=iter+1
         if (ytry <= y(ilo)) then
-            ytry=amotry(2.0D0)
+            ytry=amotry(2.0E0_rk)
             iter=iter+1
         else if (ytry >= y(inhi)) then
             ysave=y(ihi)
-            ytry=amotry(0.5D0)
+            ytry=amotry(0.5E0_rk)
             iter=iter+1
             if (ytry >= ysave) then
                 p(:,:)=0.5D0*(p(:,:)+spread(p(ilo,:),1,size(p,1)))
@@ -2230,8 +2269,9 @@
             IF (ABS(A(I,J)).GT.AAMAX) AAMAX=ABS(A(I,J))
         END DO
         IF (AAMAX.EQ.0.) then
-            write(*,'(A)') 'Singular matrix.'
-            read*
+            if (rank==0) write(*,'(A)') 'Singular matrix.'
+            write(*,*) A
+            stop
             ! pause
         ENDIF
         VV(I)=1./AAMAX
@@ -2277,13 +2317,241 @@
     END DO
     RETURN
     END SUBROUTINE LUDCMP
+
+    ! ---------------------------------------------------------------------------------------!
+    ! Globally convergent Newton-Raphson
+    ! ---------------------------------------------------------------------------------------!
+    !Given an initial guess x(1:n) for a root in n dimensions, find the root by a globally
+    !convergent Newton’s method. The vector of functions to be zeroed, called fvec(1:n)
+    !in the routine below, is returned by a user-supplied subroutine that must be called funcv
+    !and have the declaration subroutine funcv(n,x,fvec). The output quantity check
+    !is false on a normal return and true if the routine has converged to a local minimum of the
+    !function fmin defined below. In this case try restarting from a different initial guess.
+    !Parameters: NP is the maximum expected value of n; MAXITS is the maximum number of
+    !iterations; TOLF sets the convergence criterion on function values; TOLMIN sets the criterion
+    !for deciding whether spurious convergence to a minimum of fmin has occurred; TOLX is
+    !the convergence criterion on delta-x; STPMX is the scaled maximum step length allowed in line
+    !searches.
+    ! ---------------------------------------------------------------------------------------!
+    SUBROUTINE newt(funcv,fdjac,x,tolf,check,error)
+    IMPLICIT NONE
+
+
+    !Changing
+    REAL(kind=rk), DIMENSION(:), INTENT(INOUT) :: x
+
+    !Input
+    REAL(kind=rk), INTENT(IN) :: tolf
+
+    !Output
+    REAL(kind=rk), OPTIONAL, INTENT(OUT) :: error
+    LOGICAL, INTENT(OUT) :: check
+
+    !Local
+    INTEGER, PARAMETER :: MAXITS=500
+    REAL(kind=rk), PARAMETER :: TOLX=epsilon(x),STPMX=100.0
+    REAL(kind=rk) :: tolmin
+    INTEGER :: its
+    INTEGER, DIMENSION(size(x)) :: indx
+    REAL(kind=rk) :: d,f,fold,stpmax
+    REAL(kind=rk), DIMENSION(size(x)) :: g,p,xold
+    REAL(kind=rk), DIMENSION(size(x)), TARGET :: fvec
+    REAL(kind=rk), DIMENSION(size(x),size(x)) :: fjac
+    integer::  requiredl, ios
+    !Interfaces
+    INTERFACE
+    FUNCTION funcv(x)
+    USE header
+    IMPLICIT NONE
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
+    REAL(kind=rk), DIMENSION(size(x)) :: funcv
+    END FUNCTION funcv
+    END INTERFACE
+
+    !Interface
+    INTERFACE
+    FUNCTION fdjac(x)
+    USE header
+    IMPLICIT NONE
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
+    REAL(kind=rk), DIMENSION(size(x),size(x)) :: fdjac
+    END FUNCTION fdjac
+    END INTERFACE
+
+    tolmin = tolf*1.e-2_rk
+    f=fmin(funcv,fvec,x)
+    error = maxval(abs(fvec(:)))
+    if (error < tolf) then
+        check=.false.
+        RETURN
+    end if
+    stpmax=STPMX*max(vabs(x(:)),real(size(x),rk))
+    do its=1,MAXITS
+        fjac = fdjac(x)
+        g(:)=matmul(fvec(:),fjac(:,:))
+        xold(:)=x(:)
+        fold=f
+        p(:)=-fvec(:)
+
+        !inquire (iolength=requiredl) fjac
+        !open (unit=201, form="unformatted", file='C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\jacob', ACCESS="STREAM", action='write', IOSTAT = ios)
+        !write (201)  fjac
+        !close( unit=201)
+
+        call ludcmp(fjac,indx,d)
+        call lubksb(fjac,indx,p)
+        call lnsrch(funcv,xold,fold,g,p,x,f,stpmax,check,fmin,fvec)
+        error = maxval(abs(fvec(:)))
+        if (error < tolf) then
+            check=.false.
+            RETURN
+        end if
+        if (check) then
+            check=(maxval(abs(g(:))*max(abs(x(:)),1.0_rk) / &
+                max(f,0.5_rk*size(x))) < tolmin)
+            RETURN
+        end if
+        if (maxval(abs(x(:)-xold(:))/max(abs(x(:)),1.0_rk)) < TOLX) &
+            RETURN
+    end do
+    !print *, 'newt values'
+    !print *, x, xold, fvec, f, fold, tolf, fjac, g, stpmax
+    write(*,*) 'MAXITS exceeded in newt'
+    END SUBROUTINE newt
+    ! ---------------------------------------------------------------------------------------!
+    !linear searhc
+    ! ---------------------------------------------------------------------------------------!
+    SUBROUTINE lnsrch(funcv,xold,fold,g,p,x,f,stpmax,check,func,fvec)
+    !USE nrtype; USE nrutil, ONLY : assert_eq,nrerror,vabs
+    IMPLICIT NONE
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: xold,g
+    REAL(kind=rk), DIMENSION(:), INTENT(INOUT) :: p
+    REAL(kind=rk), INTENT(IN) :: fold,stpmax
+    REAL(kind=rk), DIMENSION(:), INTENT(OUT) :: x
+    REAL(kind=rk), DIMENSION(:), INTENT(OUT) :: fvec
+    REAL(kind=rk), INTENT(OUT) :: f
+    LOGICAL, INTENT(OUT) :: check
+    INTERFACE
+    FUNCTION funcv(x)
+    USE Header
+    IMPLICIT NONE
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
+    REAL(kind=rk), DIMENSION(size(x)) :: funcv
+    END FUNCTION funcv
+    END INTERFACE
+    INTERFACE
+    FUNCTION func(funcv,fvec,x)
+    USE Header
+    IMPLICIT NONE
+    REAL(kind=rk) :: func
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
+    REAL(kind=rk), DIMENSION(size(x)), INTENT(OUT) :: fvec
+    INTERFACE
+    FUNCTION funcv(x)
+    USE Header
+    IMPLICIT NONE
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
+    REAL(kind=rk), DIMENSION(size(x)) :: funcv
+    END FUNCTION funcv
+    END INTERFACE
+    END FUNCTION func
+    END INTERFACE
+    REAL(kind=rk), PARAMETER :: ALF=1.0e-04_rk,TOLX=epsilon(x)
+    INTEGER :: ndum
+    REAL(kind=rk) :: a,alam,alam2,alamin,b,disc,f2,pabs,rhs1,rhs2,slope,tmplam
+    !ndum=assert_eq(size(g),size(p),size(x),size(xold),'lnsrch')
+    if (size(g) == size(p) .and. size(p) == size(x) .and. size(x) == size(xold)) then
+        ndum = size(g)
+    else
+        write(*,*) "Assert equal error lnsrch"
+    end if
+    check=.false.
+    pabs=vabs(p(:))
+    if (pabs > stpmax) p(:)=p(:)*stpmax/pabs
+    slope=dot_product(g,p)
+    if (slope >= 0.0) then
+        !print *, g, p, stpmax, pabs, fold, xold
+        !write(*,*) 'roundoff problem in lnsrch'
+    endif
+    alamin=TOLX/maxval(abs(p(:))/max(abs(xold(:)),1.0_rk))
+    alam=1.0
+    do
+        x(:)=xold(:)+alam*p(:)
+        f=func(funcv,fvec,x)
+        if (alam < alamin) then
+            x(:)=xold(:)
+            check=.true.
+            RETURN
+        else if (f <= fold+ALF*alam*slope) then
+            RETURN
+        else
+            if (alam == 1.0) then
+                tmplam=-slope/(2.0_rk*(f-fold-slope))
+            else
+                rhs1=f-fold-alam*slope
+                rhs2=f2-fold-alam2*slope
+                a=(rhs1/alam**2-rhs2/alam2**2)/(alam-alam2)
+                b=(-alam2*rhs1/alam**2+alam*rhs2/alam2**2)/&
+                    (alam-alam2)
+                if (a == 0.0) then
+                    tmplam=-slope/(2.0_rk*b)
+                else
+                    disc=b*b-3.0_rk*a*slope
+                    if (disc < 0.0) then
+                        tmplam=0.5_rk*alam
+                    else if (b <= 0.0) then
+                        tmplam=(-b+sqrt(disc))/(3.0_rk*a)
+                    else
+                        tmplam=-slope/(b+sqrt(disc))
+                    end if
+                end if
+                if (tmplam > 0.5_rk*alam) tmplam=0.5_rk*alam
+            end if
+        end if
+        alam2=alam
+        f2=f
+        alam=max(tmplam,0.1_rk*alam)
+    end do
+    END SUBROUTINE lnsrch
+    ! ---------------------------------------------------------------------------------------!
+    !Utilities from nrutil
+    ! ---------------------------------------------------------------------------------------!
+    !Returns f = 1/2 F · F at x. subroutine funcv(n,x,f) is a fixed-name, user-supplied
+    !routine that returns the vector of functions at x. The common block newtv communicates
+    !the function values back to newt.
+    ! ---------------------------------------------------------------------------------------!
+    FUNCTION fmin(funcv,fvec,x)
+    IMPLICIT NONE
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
+    REAL(kind=rk), DIMENSION(size(x)), INTENT(OUT) :: fvec
+    REAL(kind=rk) :: fmin
+    INTERFACE
+    FUNCTION funcv(x)
+    use Header
+    IMPLICIT NONE
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
+    REAL(kind=rk), DIMENSION(size(x)) :: funcv
+    END FUNCTION funcv
+    END INTERFACE
+    fvec=funcv(x)
+    fmin=0.5_rk*dot_product(fvec,fvec)
+    END FUNCTION fmin
+    FUNCTION vabs(v)
+    implicit none
+    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: v
+    REAL(kind=rk) :: vabs
+    vabs=sqrt(dot_product(v,v))
+    END FUNCTION vabs
+    ! ---------------------------------------------------------------------------------------!
+    !Factorial subroutine
+    ! ---------------------------------------------------------------------------------------!
     function factorial (num) result (res)
 
     implicit none
     integer, intent (in) :: num
     real(KIND=rk) :: res
     integer :: i
-    
+
     !Why doesn't this work?
     !res = product ((/(i, i = 1, num)/))
     res=1
@@ -2292,9 +2560,7 @@
             res=res*i
         end do
     end if
-    
     end function factorial
-
     function choose (n, k) result (res)
 
     implicit none
@@ -2305,7 +2571,7 @@
     res = factorial (n) / (factorial (k) * factorial (n - k))
 
     end function choose
-     ! ---------------------------------------------------------------------------------------!
+    ! ---------------------------------------------------------------------------------------!
     ! ---------------------------------------------------------------------------------------!
     ! Extrapolation is by default here. There is no option to use the bottom value (as I have
     ! in the one-dimensional linear interpolation).
@@ -2458,6 +2724,420 @@
     end if
 
 
-    end subroutine linearinterpfromlocations_vec   
+    end subroutine linearinterpfromlocations_vec
+
+    pure function entropyRK(p) result(h)
+    implicit none
+
+    real (kind=rk), intent(in) :: p(:)
+    real (kind=hp) :: h
+    real (kind=hp), allocatable :: ploc(:)
+
+    allocate(ploc(size(p)))
+    ploc = pack(p, p>0.0)
+
+    ploc = pack(p, p>0.0)
+    if (size(ploc) > 0) then
+        h = -dot_product(ploc,log(ploc))/log(2.0)
+    else
+        h = 0.0
+    end if
+
+    end function
+    pure function entropyHP(p) result(h)
+    implicit none
+
+    real (kind=HP), intent(in) :: p(:)
+    real (kind=hp) :: h
+    real (kind=hp), allocatable :: ploc(:)
+
+    allocate(ploc(size(p)))
+    ploc = pack(p, p>0.0)
+    if (size(ploc) > 0) then
+        h = -dot_product(ploc,log(ploc))/log(2.0)
+    else
+        h = 0.0
+    end if
+
+    end function
+    ! Returns the Generalised Moore-Penrose inverse of a matrix
+    ! Uses a translation of the matlab code in https://hal.archives-ouvertes.fr/hal-00276477/document
+    !calculated by finding the Cholesky decomposition.  Depends on c.
+    !Fast Computation of Moore-Penrose Inverse Matrices
+    ! by Pierre Courrieu
+    !SUBROUTINE MPinv(Ginv,G) !result(Ginv)
+    !USE BLAS95
+    !!USE mkl_precision
+    !real(kind=rk), dimension(:,:), intent(in) :: G
+    !real(kind=rk), dimension(size(G,dim=1),size(G,dim=2)), intent(out) :: Ginv
+    !integer transpose_check, n, m, r,k,loop
+    !REAL(KIND=rk), DIMENSION(:,:),ALLOCATABLE :: A !The correct shape matrix i.e. m by n matrix with m>n
+    !REAL(KIND=rk), DIMENSION(:), ALLOCATABLE ::dA
+    !REAL(KIND=rk) :: tol
+    !REAL(KIND=rk), DIMENSION(:,:), ALLOCATABLE :: L
+    !REAL(KIND=rk), DIMENSION(:,:), ALLOCATABLE :: Lselect, Mmat, tempmat1, tempmat2 !Workspace
+    !INTEGER :: istat
+    !CHARACTER(len=80) :: err_msg
+    !!initialise transpose
+    !transpose_check=0
+    !
+    !IF(size(G,dim=1)<size(G,dim=2)) THEN !We want a m by n matrix with m>n
+    !    ALLOCATE(A(size(G,dim=1),size(G,dim=1)),dA(size(G,dim=1)),L(size(G, dim=1),size(G, dim=1)),  STAT=istat, ERRMSG=err_msg)
+    !    IF (istat /= 0) THEN !Safety check
+    !        PRINT*,"ERROR IN 1st ALLOCATION IN MOORE-PENROSE INVERSE"
+    !        PRINT*,"    "
+    !        PRINT*,err_msg
+    !    END IF
+    !    transpose_check=1
+    !    n=size(G,dim=1)
+    !    m=size(G,dim=2)
+    !    call dgemm( G, G, A,'N', 'T')        !A=matmul(G,TRANSPOSE(G)) !so this is n by n
+    !ELSE
+    !    ALLOCATE(A(size(G,dim=2),size(G,dim=2)),dA(size(G,dim=2)),L(size(G, dim=2),size(G, dim=2)),  STAT=istat, ERRMSG=err_msg)
+    !    IF (istat /= 0) THEN !Safety check
+    !        PRINT*,"ERROR IN  1st ALLOCATION  IN MOORE-PENROSE INVERSE"
+    !        PRINT*,"    "
+    !        PRINT*,err_msg
+    !    END IF
+    !    m=size(G,dim=1)
+    !    n=size(G,dim=2)
+    !    call dgemm( G, G, A,'T', 'N') ! A=matmul(TRANSPOSE(G),G) !so this is n by n
+    !END IF
+    !
+    !! Full rank Cholesky factorization of A
+    !!Now pick up the diagonal in a matrix
+    !dA=0.0_rk
+    !DO loop=1,SIZE(A, DIM=1)
+    !    dA(loop)=A(loop,loop)
+    !END DO
+    !
+    !!Get the tolerance
+    !tol= minval(dA, mask=(dA>0))*1d-9;
+    !
+    !L=0.0_rk !initiakise
+    !r=0
+    !DO k=1,n
+    !    r=r+1
+    !    L(k:n,r:r)=A(k:n,k:k)-matmul(L(k:n,1:r-1),TRANSPOSE(L(k:k,1:r-1))) !Doing k:k makes it a 1 D array, so given how frequently I end up with stack overflows from temporaries assigned to stacks this is a bit of a time bomb (as #moments increases Pr(this crashes -->1), but right now I am lazy
+    !    !Note: for r=1, the substracted vector is zero
+    !    IF (L(k,r)>tol) THEN
+    !        L(k,r)=SQRT(L(k,r))
+    !        IF (k<n) THEN
+    !            L(k+1:n,r)=L(k+1:n,r)/L(k,r)
+    !        END IF
+    !    ELSE
+    !        r=r-1
+    !    END IF
+    !
+    !END DO
+    !
+    !ALLOCATE(Lselect(size(L,dim=1),r), Mmat(r,r), tempmat1(SIZE(L,dim=1),r),tempmat2(SIZE(L,dim=1),SIZE(L,dim=1)),  STAT=istat, ERRMSG=err_msg)
+    !IF (istat /= 0) THEN !Safety check
+    !    PRINT*,"ERROR IN ALLOCATION FOR CHOLESKY FACTORIZATION IN MOORE-PENROSE INVERSE"
+    !    PRINT*,"    "
+    !    PRINT*,err_msg
+    !END IF
+    !!Select the right part of L
+    !Lselect=L(:,1:r)
+    !!Finally, computation of the generalised inverse
+    !call dgemm(Lselect,Lselect,Mmat,'T')
+    !call inverse(Mmat,Mmat)     !Mmat=inv(matmul(TRANSPOSE(Lselect),Lselect))
+    !
+    !!The LM matrix:
+    !call dgemm(Lselect, Mmat, tempmat1)    !tempmat1=matmul(Lselect,Mmat)
+    !!the LMM matrix
+    !call dgemm(tempmat1,MMat,tempmat1)     !tempmat1=matmul(tempmat1,Mmat)
+    !!the LMM'L' matrix
+    !call dgemm(tempmat1,Lselect,tempmat2,'N','T')     !tempmat2=MATMUL(tempmat1,TRANSPOSE(Lselect))
+    !IF (TRANSPOSE_check==1) THEN
+    !    call dgemm(G,tempmat2,Ginv,'T')         !Ginv=MATMUL(TRANSPOSE(G),tempmat2)
+    !ELSE
+    !    call dgemm(G,tempmat2,Ginv,'n','T')                !Ginv=MATMUL(tempmat2,TRANSPOSE(G))
+    !END IF
+    !
+    !DEALLOCATE(Lselect, Mmat,tempmat1,tempmat2,L,A,da,  STAT=istat, ERRMSG=err_msg)
+    !IF (istat /= 0) THEN !Safety check
+    !    PRINT*,"ERROR IN DEALLOCATION FOR CHOLESKY FACTORIZATION IN MOORE-PENROSE INVERSE"
+    !    PRINT*,"    "
+    !    PRINT*,err_msg
+    !END IF
+    !
+    !PRINT*,"SUCCESFULLY CALCULATED MOORE-PENROSE INVERSE"
+    !
+    !end subroutine MPinv
+    !
+    !subroutine inverse(Ainv,A)
+    !real(kind=rk), dimension(:,:), intent(in) :: A
+    !real(kind=rk), dimension(size(A,1),size(A,2)), intent(out) :: Ainv
+    !real(kind=rk), dimension(size(A,1)) :: work  ! work array for LAPACK
+    !integer, dimension(size(A,1)) :: ipiv   ! pivot indices
+    !integer :: n, info
+    !! External procedures defined in LAPACK
+    !external DGETRF
+    !external DGETRI
+    !! Store A in Ainv to prevent it from being overwritten by LAPACK
+    !Ainv = A
+    !n = size(A,1)
+    !! DGETRF computes an LU factorization of a general M-by-N matrix A
+    !! using partial pivoting with row interchanges.
+    !call DGETRF(n, n, Ainv, n, ipiv, info)
+    !if (info /= 0) then
+    !    stop 'Matrix is numerically singular!'
+    !end if
+    !! DGETRI computes the inverse of a matrix using the LU factorization
+    !! computed by DGETRF.
+    !call DGETRI(n, Ainv, n, ipiv, work, n, info)
+    !if (info /= 0) then
+    !    stop 'Matrix inversion failed!'
+    !end if
+    !end subroutine
+    ! ---------------------------------------------------------------------------------------!
+    !Generate pseudo-random norma using   Marsaglia polar method base on
+    !https://rosettacode.org/wiki/Statistics/Normal_distribution#Fortran
+    ! ---------------------------------------------------------------------------------------!
+    subroutine genStdNorm(samples,NrmSeq)
+    implicit none
+    integer, intent(in) :: samples
+    real (kind=rk), intent(out) :: NrmSeq(samples)
+    integer :: n = 0
+    integer :: i, ind
+    real :: ur1, ur2, nr1, nr2, s
+
+    n = 0
+    do while(n < samples)
+        call random_number(ur1)
+        call random_number(ur2)
+        ur1 = ur1 * 2.0 - 1.0
+        ur2 = ur2 * 2.0 - 1.0
+        s = ur1*ur1 + ur2*ur2
+        if(s >= 1.0) cycle
+        nr1 = ur1 * sqrt(-2.0*log(s)/s)
+        nr2 = ur2 * sqrt(-2.0*log(s)/s)
+        if (n+2<=samples) then
+            NrmSeq(n+1:n+2) = (/nr1, nr2/)
+        else
+            NrmSeq(n+1) = nr1
+        end if
+        n = n + 2
+    end do
+    end subroutine
+    !function ols(y, x, n, k) result (beta)
+    !
+    !implicit none
+    !
+    !external DGELS
+    !
+    !integer, intent(in) :: n, k
+    !real(kind=rk), intent(in) :: y(:), x(:, :)
+    !integer :: info, lwork
+    !real(kind=rk) :: beta(k)
+    !real(kind=rk), allocatable :: work(:)
+    !allocate(work(100 * n * k))
+    !lwork = 100 * n * k
+    !
+    !call DGELS('No transpose', n, k, 1, x, n, y, n, work, lwork, info)
+    !beta = y(1:k)
+    !deallocate(work)
+    !
+    !end function ols
+
+    !-----------------------------------------------------------------------------------!
+    !-----------------------------------------------------------------------------------!
+
+
+    subroutine doReg(y, x, n, t, k, mask, ols, beta)
+    implicit none
+
+    integer, intent(in) :: n, t, k
+    real (kind=rk), intent(in) :: y(t, n)
+    real (kind=rk), intent(in) :: x(t, n, k)
+    logical, intent(in) :: mask(t,n), ols
+    real (kind=rk), intent(out) :: beta(k, 1)
+
+    ! For programme
+    real (kind=rk) :: meany(n), meanx(n,k), grandMeanY, grandMeanX(k)
+    real (kind=rk) :: yd(t, n) ! yd is for demeaned
+    real (kind=rk) :: xd(t, n, k) !xd is for demeaned
+    real (kind=rk) :: runningCountY, runningCountX(k), GrandRunningCountY, GrandRunningCountX(k)
+    integer :: ixN, ixT, ixK, ixsmalln, bigN, ixBigN
+    real (kind=rk), allocatable :: bigY(:, :), bigX(:,:)
+    real (kind=rk) ::  xPxinverse(k,k), xPx(k,k), xPy(k,1)
+    integer, parameter :: NineNineNine = 999
+
+
+    !Count the number of active observations
+    bigN = 0
+    do ixN = 1, n
+        do ixT = 1, t
+            if (mask(ixT,ixN))  bigN = bigN + 1
+        end do
+    end do
+
+    GrandRunningCountY = 0.0_rk
+    GrandRunningCountX = 0.0_rk
+
+    ! First get mean across t for all n
+    do ixN = 1, n
+        ixsmalln = 0
+        runningCountY = 0.0_rk
+        runningCountX = 0.0_rk
+
+        ! Get means across t
+        do ixT = 1, t
+            if (mask(ixT,ixN)) then
+                runningCountY = runningCountY + y(ixT,ixN)
+                GrandRunningCountY = GrandRunningCountY + y(ixT,ixN)
+                do ixK = 1, k
+                    runningCountX(ixK) =  runningCountX(ixK) +  x(ixT, ixN,ixK)
+                    GrandRunningCountX(ixK) =  GrandRunningCountX(ixK) +  x(ixT, ixN,ixK)
+                end do
+                ixsmalln = ixsmalln + 1
+            end if !  if (mask(ixN, ixT) then
+        end do
+
+        ! Save means
+        meany(ixN) = runningCountY / real(ixsmalln, rk)
+        do ixK = 1, k
+            meanx(ixN,ixK) =  runningCountX(ixK) / real(ixsmalln, rk)
+        end do
+    end do
+
+    ! Get grand means
+    grandMeanY = GrandRunningCountY / bigN
+    do ixK = 1, k
+        grandMeanX(ixK) =  GrandRunningCountX(ixK) / bigN
+    end do
+
+
+    ! Get demeaned data if we're not doing ols
+    do ixN = 1, n
+        do ixT = 1, t
+            if (mask(ixT,ixN)) then
+                if (ols) then
+                    yd(ixT,ixN) = y(ixT,ixN)
+                else
+                    yd(ixT,ixN) = y(ixT,ixN) - meany(ixN) + grandMeanY
+                end if
+
+
+                do ixK = 1, k
+                    if (ols) then
+                        xd(ixT, ixN, ixK)  = x(ixT, ixN, ixK)
+                    else
+                        xd(ixT, ixN, ixK)  = x(ixT, ixN, ixK)- meanx(ixN,ixK)  + grandMeanX(ixK)
+                    end if
+
+                end do
+            else
+                yd(ixT,ixN) = -NineNineNine
+                do ixK = 1, k
+                    xd(ixT,ixN, ixK)  =  -NineNineNine
+                end do
+            end if
+        end do
+    end do
+
+    ! Allocate
+    allocate (bigY(bigN, 1))
+    allocate(bigX(bigN,k))
+
+    ixBigN = 0
+    ! Populte long vectors
+    do ixN = 1, n
+        do ixT = 1, t
+            if (mask(ixT,ixN)) then
+                ixBigN = ixBigN + 1
+                bigY(ixBigN, 1) = yd(ixT,ixN)
+                do ixK = 1, k
+                    bigX(ixBigN,ixK) = xd(ixT, ixN, ixK)
+                end do
+            end if
+
+        end do
+    end do
+
+    ! Get the regression coefficients
+    xPx = matmul(transpose(bigX), bigX)
+    xPy = matmul(transpose(bigX), bigY)
+    call getmatrixinverse(xPx, k, k + 1, xPxinverse)
+    beta = matmul( xPxinverse, xPy)
+
+
+    deallocate(bigY)
+    deallocate(bigX)
+
+
+    end subroutine doReg
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Block nested loop skyline routine - extract pareto efficient entries
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    subroutine skylineBNL(tuple,choices,dims,buffer,bufferInd,sizeBuffer )
+    implicit none
+
+    !!!Inputs
+    integer, intent(in) :: choices, dims
+    !unorder tuples to be checked for dominance ordering first dim choice, second dim vector characteristics
+    real (kind=rk), intent(in) :: tuple(choices,dims)
+
+    !Output
+    real (kind=rk), intent(out) :: buffer(choices,dims)
+    integer, intent(out) :: bufferInd(choices), sizeBuffer
+    !Local
+    integer :: currentRec, i, j, recToDrop(choices), countDrop
+    logical :: dominated, dominating, addtoBuffer
+
+
     
+    !I'll only use this for postive inputs so use -1.0 to signify empty record
+    buffer = - 1.0
+    bufferInd = -1
+    
+    buffer(1,:) = tuple(1,:)
+    sizeBuffer = 1
+    bufferInd(1) = 1
+    do  currentRec = 2, choices
+        recToDrop = -1
+        countDrop = 0
+        addtoBuffer = .TRUE.
+        do i = 1, sizeBuffer
+            dominated = .FALSE.
+            dominating = .FALSE.
+
+            do j = 1, dims
+                if (tuple(currentRec,j) > buffer(i,j)) then
+                    dominating =.TRUE.
+                else if (tuple(currentRec,j) < buffer(i,j)) then
+                    dominated = .TRUE.
+                end if
+            end do
+
+            if (dominated .AND. .NOT. dominating) then
+                addtoBuffer = .FALSE.
+                exit
+            else if (dominating .AND. .NOT. dominated) then
+                countDrop = countDrop + 1
+                recToDrop(countDrop) = i
+            end if
+        end do
+        if (countDrop > 0) then
+            j = 0 
+            do i = 1, sizeBuffer
+                if (i== recToDrop(j+1) ) then
+                   j = j + 1 
+                   if (i+j > sizeBuffer) exit
+                end if
+                buffer(i,:) = buffer(i+j,:) 
+                bufferInd(i) = bufferInd(i+j) 
+            end do 
+            sizeBuffer = sizeBuffer - countDrop
+        end if 
+        if (addtoBuffer) then
+            sizeBuffer = sizeBuffer + 1
+            buffer(sizeBuffer,:) = tuple(currentRec,:)
+            bufferInd(sizeBuffer) = currentRec
+        end if 
+
+    end do
+
+    end subroutine skylineBNL
     end module routines_generic

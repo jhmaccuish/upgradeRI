@@ -8,7 +8,7 @@
 
     integer, parameter :: numPointsType = TYPES_SIZE !1!
 #ifdef _WIN64      
-    integer, parameter :: numPointsA =   90 !30 !90 !  !140 !110 !120 !30 !30 !120!10!30!100!50!
+    integer, parameter :: numPointsA =   30 !90 !  120!  !140 !110 !120 !30 !30 !120!10!30!100!50!
 #else
     integer, parameter :: numPointsA = 120!120!10!30!100!50!
 #endif 
@@ -17,8 +17,8 @@
     integer, parameter :: numPointsY = 2*numPointsProd !20
     integer, parameter :: numAIME = 8!numPointsA  !10 !5
     integer, parameter :: numPointsL = 2
-    integer, parameter :: numPointsSPA = 11
-    integer, parameter :: numSims =  50000 !1016!  5000!250! 10000!
+    integer, parameter :: numPointsSPA = 11!8 !9!
+    integer, parameter :: numSims =  1000!50000 !1016!  5000!250! 10000!
     integer, parameter :: startAge =  52 !20!
     integer, parameter :: weeksYear = 52
     integer, parameter :: weeksWorking = 48
@@ -27,7 +27,7 @@
     integer, parameter :: Tretire =60 -startAge +1
     integer, protected :: TrueSPA = 1
     integer, parameter :: TendRI = Tretire +  numPointsSPA - 1!CHANGE THIS ONE FOR RE
-    integer, parameter :: normBnd = 4
+    integer, parameter :: normBnd = 3 !4 is to big as the lowest point will be at the bound
     integer, protected  :: dimEstimation = 4
     !integer, parameter :: spouseretire = 65 -startAge+1
     integer, parameter :: stopwrok = 80 -startAge+1
@@ -102,7 +102,8 @@
         real (kind=rk) :: Simy(Tperiods, numSims)
         real (kind=rk) :: unemploy(numPointsType,numPointsProd)
         real (kind=rk) :: reemploy(numPointsType,numPointsProd)
-        real (kind=rk) :: posteriorSPA(TendRI,numPointsSPA)
+        real (kind=rk), allocatable :: posteriorSPA(:,:,:, :,  :,:)
+        !real (kind=rk) :: posteriorSPA(TendRI,1,1,1,1,numPointsSPA) Tretire
         integer :: supportSPA(TendRI)
         !real (kind=rk) :: initialGuessRI(numPointsSPA+1,numPointsSPA)
         real (kind=rk) :: initialGuessRI(numPointsSPA*numPointsL*numPointsA+1,numPointsSPA*numPointsL*numPointsA)
@@ -136,9 +137,10 @@
     !----------------------------------------------------------------------------------------------------------!
     subroutine setModel
     implicit none
-    CHARACTER(len=32) :: arg
+    
 #ifdef mpiBuild
     include 'mpif.h'
+    CHARACTER(len=32) :: arg
 #endif 
     ! First initialize the system_clock
     CALL system_clock(count_rate=cr)

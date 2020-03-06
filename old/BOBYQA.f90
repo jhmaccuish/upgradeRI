@@ -237,7 +237,7 @@
     real (kind=rk), parameter :: tenth = 0.1_rk
     real (kind=rk), parameter :: two = 2.0_rk
     real (kind=rk), parameter :: zero = 0.0_rk
-    integer :: location !, ios
+    integer :: location, ios
     !character(1000) :: path_bobyqa = '\\econ-fs\Home3\uctphen\temp\'
 
     procedure (func) :: calfun

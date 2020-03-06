@@ -1796,15 +1796,15 @@
     ! --------------------------------------------------------------------
     subroutine getmatrixinverse(matrix, dim, dimplus1, inverse)
     !!Calculate a matrix inverse using the NAG routine. NAG routine gives answer in an odd format - this converts it to a usable format
-    !    !use  globalvalues ! only here so that I can access globalrank for an error message    
+    !    !use  globalvalues ! only here so that I can access globalrank for an error message
     implicit none
-            integer, intent(in) :: dim
-            integer, intent(in) :: dimplus1
-            real (kind=rk), intent(in) :: matrix(dim, dim)
-            real (kind=rk), intent(out) :: inverse(dim, dim)
-    real (kind=rk) :: Atemp(dim,dim), b(dim),  d 
+    integer, intent(in) :: dim
+    integer, intent(in) :: dimplus1
+    real (kind=rk), intent(in) :: matrix(dim, dim)
+    real (kind=rk), intent(out) :: inverse(dim, dim)
+    real (kind=rk) :: Atemp(dim,dim), b(dim),  d
     integer:: i, indx(dim)
-    
+
     Atemp = matrix
     call ludcmp(Atemp,indx,d)
     do i=1,dim
@@ -1813,10 +1813,10 @@
         call LUBKSB(Atemp,indx,b)
         inverse(:,i) = b
     end do
-    
+
     !write(*,*) matmul(A,Ainv)
-    
-    
+
+
     !        integer, intent(in) :: dim
     !        integer, intent(in) :: dimplus1
     !        real (kind=rk), intent(in) :: matrix(dim, dim)
@@ -1879,7 +1879,7 @@
     !        end if
     !
     !
-      end subroutine getmatrixinverse
+    end subroutine getmatrixinverse
 
     integer function myMinloc(array, dim) ! The Fortan intrinsic has returned an error
     implicit none
@@ -2914,10 +2914,10 @@
         nr1 = ur1 * sqrt(-2.0*log(s)/s)
         nr2 = ur2 * sqrt(-2.0*log(s)/s)
         if (n+2<=samples) then
-            NrmSeq(n+1:n+2) = (/nr1, nr2/) 
+            NrmSeq(n+1:n+2) = (/nr1, nr2/)
         else
             NrmSeq(n+1) = nr1
-        end if 
+        end if
         n = n + 2
     end do
     end subroutine
@@ -3068,5 +3068,76 @@
 
 
     end subroutine doReg
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Block nested loop skyline routine - extract pareto efficient entries
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    subroutine skylineBNL(tuple,choices,dims,buffer,bufferInd,sizeBuffer )
+    implicit none
 
+    !!!Inputs
+    integer, intent(in) :: choices, dims
+    !unorder tuples to be checked for dominance ordering first dim choice, second dim vector characteristics
+    real (kind=rk), intent(in) :: tuple(choices,dims)
+
+    !Output
+    real (kind=rk), intent(out) :: buffer(choices,dims)
+    integer, intent(out) :: bufferInd(choices), sizeBuffer
+    !Local
+    integer :: currentRec, i, j, recToDrop(choices), countDrop
+    logical :: dominated, dominating, addtoBuffer
+
+
+    
+    !I'll only use this for postive inputs so use -1.0 to signify empty record
+    buffer = - 1.0
+    bufferInd = -1
+    
+    buffer(1,:) = tuple(1,:)
+    sizeBuffer = 1
+    bufferInd(1) = 1
+    do  currentRec = 2, choices
+        recToDrop = -1
+        countDrop = 0
+        addtoBuffer = .TRUE.
+        do i = 1, sizeBuffer
+            dominated = .FALSE.
+            dominating = .FALSE.
+
+            do j = 1, dims
+                if (tuple(currentRec,j) > buffer(i,j)) then
+                    dominating =.TRUE.
+                else if (tuple(currentRec,j) < buffer(i,j)) then
+                    dominated = .TRUE.
+                end if
+            end do
+
+            if (dominated .AND. .NOT. dominating) then
+                addtoBuffer = .FALSE.
+                exit
+            else if (dominating .AND. .NOT. dominated) then
+                countDrop = countDrop + 1
+                recToDrop(countDrop) = i
+            end if
+        end do
+        if (countDrop > 0) then
+            j = 0 
+            do i = 1, sizeBuffer
+                if (i== recToDrop(j+1) ) then
+                   j = j + 1 
+                   if (i+j > sizeBuffer) exit
+                end if
+                buffer(i,:) = buffer(i+j,:) 
+                bufferInd(i) = bufferInd(i+j) 
+            end do 
+            sizeBuffer = sizeBuffer - countDrop
+        end if 
+        if (addtoBuffer) then
+            sizeBuffer = sizeBuffer + 1
+            buffer(sizeBuffer,:) = tuple(currentRec,:)
+            bufferInd(sizeBuffer) = currentRec
+        end if 
+
+    end do
+
+    end subroutine skylineBNL
     end module routines_generic
