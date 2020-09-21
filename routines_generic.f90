@@ -3087,11 +3087,11 @@
     logical :: dominated, dominating, addtoBuffer
 
 
-    
+
     !I'll only use this for postive inputs so use -1.0 to signify empty record
     buffer = - 1.0
     bufferInd = -1
-    
+
     buffer(1,:) = tuple(1,:)
     sizeBuffer = 1
     bufferInd(1) = 1
@@ -3120,24 +3120,125 @@
             end if
         end do
         if (countDrop > 0) then
-            j = 0 
-            do i = 1, sizeBuffer
-                if (i== recToDrop(j+1) ) then
-                   j = j + 1 
-                   if (i+j > sizeBuffer) exit
-                end if
-                buffer(i,:) = buffer(i+j,:) 
-                bufferInd(i) = bufferInd(i+j) 
-            end do 
+            j = 0
+            i = 0
             sizeBuffer = sizeBuffer - countDrop
-        end if 
+            do while (i<=sizeBuffer)
+                i = i+1
+                !Is what we are about to copy in to drop then copy in next rec
+                if (j+1 <= countDrop ) then
+                    if (i + j == recToDrop(j+1) ) then
+                        j = j + 1
+                    end if
+                end if
+                buffer(i,:) = buffer(i+j,:)
+                bufferInd(i) = bufferInd(i+j)
+                !Is what we just copied also to drop then don't move on
+                if (j+1 <= countDrop ) then
+                    if (i + j == recToDrop(j+1) ) then
+                        i = i - 1
+                    end if
+                end if
+            end do
+            !do i = 1, sizeBuffer
+            !    if (i== recToDrop(j+1) ) then
+            !        j = j + 1
+            !        if (i+j > sizeBuffer) exit
+            !    end if
+            !    buffer(i,:) = buffer(i+j,:)
+            !    bufferInd(i) = bufferInd(i+j)
+            !end do
+            !sizeBuffer = sizeBuffer - countDrop
+            buffer(sizeBuffer+1:,: ) = - 1.0
+            bufferInd(sizeBuffer+1: ) = -1
+        end if
         if (addtoBuffer) then
             sizeBuffer = sizeBuffer + 1
             buffer(sizeBuffer,:) = tuple(currentRec,:)
             bufferInd(sizeBuffer) = currentRec
-        end if 
+        end if
 
     end do
 
     end subroutine skylineBNL
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !Get Next entry in lexographic order - Narayana Panditha
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    subroutine nextLex(inData, finished)
+    implicit none
+
+    !inputs
+    real (kind=rk), intent(inout) :: inData(:)
+
+    !output
+    logical, intent(out) :: finished
+
+    !local
+    integer :: k, kmax, l, n
+    real (kind=rk) :: tempK, tempL
+
+    kmax = size(inData)
+    finished = .false.
+
+    do k = kmax-1, 1, -1
+        if (inData(k) < inData(k+1)  ) then
+            do l = kmax, 1, -1
+                if (inData(k) < inData(l)  ) then
+                    tempK  = inData(k)
+                    tempL  = inData(l)
+                    inData(k) = tempL
+                    inData(l) = tempK
+                    do n = k+1, (kmax +  k+1 )/2
+                        tempK  = inData(n)
+                        tempL  = inData(kmax-(n-(k+1)))
+                        inData(n) = tempL
+                        inData(kmax-(n-(k+1))) = tempK
+                    end do
+                end if
+            end do
+            return
+        end if
+    end do
+
+    finished = .true.
+
+    end subroutine
+    subroutine linearinterp1_vec(xgrid, ygrid, length, dim, xval, yval, extrapbot, extraptop)
+    ! Subroutine for linear interpolation
+    ! Arguments are:
+    ! 1. (input) xvlalues
+    ! 2. (input) yvalues
+    ! 3. (input) length of xgrid and ygrid,
+    ! 4. (input) value of x to interpolate at
+    ! 5. (output) interpolated value
+    ! 6. (input) indicator for whether to extrapolate below bottom point of grid
+    ! 7. (input indicator for whether to extrapolate above top point of grid
+
+    ! If the choose not to extrapolate interpolated value is set equal to either the top or the bottom
+    ! point of the grid
+    ! It is fully generic
+
+    implicit none
+    ! Arguments
+    integer, intent (in) :: length, dim
+    integer, intent (in) :: extrapbot
+    integer, intent (in) :: extraptop
+    real (kind=rk), intent (in) :: xgrid(length)
+    real (kind=sp), intent (in) :: ygrid(dim,length)
+    real (kind=rk), intent (in) :: xval
+    real (kind=rk), intent (out) :: yval(dim)
+
+    ! For programme
+    real (kind=rk) :: ygridLoc(length,dim)
+    integer :: xlowerloc
+    integer scratch_xnearestloc ! This areguments required by findingridr but I'm not using them here - hence
+
+    ygridloc = transpose(ygrid)
+
+    call findingridr(xgrid, length, xval, scratch_xnearestloc, xlowerloc)
+    call linearinterpfromlocations_vec(xgrid, ygridloc, xlowerloc, xval, length, dim, extrapbot, extraptop, yval)
+
+    end subroutine linearinterp1_vec
+
     end module routines_generic
+

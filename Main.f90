@@ -16,7 +16,7 @@
 
     use Header
     use routines
-    use bobyqa_module
+    !use bobyqa_module
 
     implicit none
 
@@ -56,7 +56,7 @@
     real (kind=rk) :: gmmScorce
     !real (kind=rk) :: indxrk
     !real (kind=rk) :: optLambda
-    logical:: recal = .true.
+    logical:: recal = .false.
     logical :: file_exists
     real (kind=rk), allocatable :: x(:), xl(:), xu(:)
     real (kind=rk) :: rhobeg, rhoend
@@ -210,7 +210,7 @@
         moments(3,1) = 0.6492912
         weights(3,1) = 0.0131797
     end if
-    weights = 1/weights
+    !weights = 1/weights
     close (unit=1001)
     close (unit=1002)
     close (unit=1003)
@@ -286,7 +286,8 @@
         do typeSim = 1, numPointsType
             call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
         end do
-        lamb=  12! 9 !8 !0!  6 ! 5 !3 ! 0! 2! 4 !8 !3 !1 !2
+        !upper limit 10?
+        lamb=  7! 9 !8 !0!  6 ! 5 !3 ! 0! 2! 4 !8 !3 !1 !2
         params%lambda=10.0**-lamb
         write (*,*) params%lambda
         call solveOuterLoop(params, grids )
@@ -419,7 +420,7 @@
         rhoend =  0.00001_rk !0.0000001_rk !
         INQUIRE(file=trim(path_bobyqa) // 'location', EXIST=file_exists)
         !if (rank==0) write(*,*) file_exists
-        call bobyqa (dimEstimation, 2*dimEstimation+1, x, xl, xu, rhobeg, rhoend, 3, 2000, func, .TRUE., file_exists)
+        !call bobyqa (dimEstimation, 2*dimEstimation+1, x, xl, xu, rhobeg, rhoend, 3, 2000, func, .TRUE., file_exists)
         !       end if
         if (rank==0) write (*,*) x
         if (rank==0) write (*,*) params%nu, params%beta, params%gamma, params%thetab
@@ -462,7 +463,7 @@
         if (ierror.ne.0) stop 'mpi problem180'
 #endif   
     elseif (action .EQ. 4) then
-        do lamb= 4,4!3,3
+        do lamb= 7,7! 4,4!3,3
             params%lambda=10.0**-lamb
             write (*,*) "Lambda is ", params%lambda
             do typeSim = 1, numPointsType

@@ -1,7 +1,7 @@
     module routines
     use Header
     use routines_generic
-    use bobyqa_module
+    !use bobyqa_module
 
     implicit none
     !#include "../globalMacros.txt"
@@ -57,11 +57,11 @@
             else
                 !upper(typeSim,t+1) = ((t-1)*upper(typeSim,t) + grids%maxInc(typeSim,t))/t
                 !if (t <=params%ERA(typeSim)) then
-                !    !upper(typeSim,t+1) = 0.75* upper(typeSim,t+1)
-                !    a = ((0.6*upper(typeSim,t+1)-2000.0))/(numAIME-1) !/t
+                !!upper(typeSim,t+1) = 0.75* upper(typeSim,t+1)
+                !a = ((0.6*upper(typeSim,t+1)-2000.0))/(numAIME-1) !/t
                 !
-                !    grids%AIMEgrid(typeSim,t,:) = a*(/(i,i=0,numAIME-1)/)
-                !    grids%AIMEgrid(typeSim,t,:) = grids%AIMEgrid(typeSim,t,:) + 2000.0! +3700
+                !grids%AIMEgrid(typeSim,t,:) = a*(/(i,i=0,numAIME-1)/)
+                !grids%AIMEgrid(typeSim,t,:) = grids%AIMEgrid(typeSim,t,:) + 2000.0! +3700
                 !else
                 grids%AIMEgrid(typeSim,t,:) = grids%AIMEgrid(typeSim,t-1,:)
             end if
@@ -164,7 +164,7 @@
     ! ---------------------------------------------------------------------------------------------------------!
     ! ---------------------------------------------------------------------------------------------------------!
     !!Solve value function by backward induction
-    subroutine solveValueFunction( params, grids, show, intermediateToFile )
+    subroutine solveValueFunction( params, grids, show, intermediateToFile  )
     implicit none
 
 #ifdef mpiBuild
@@ -177,19 +177,24 @@
     logical, intent(in) :: intermediateToFile
 
     !local
-    type (modelObjectsType) :: modelObjects
+    type (modelObjectsType) :: modelObjects, modelObjects2
     !local
     integer :: ixt, ixAIME, ixA, ixY, ixL, ixA1
-    real (kind=rk) :: EV1(numPointsA,numAIME), EV1SPA(numPointsA,numAIME,numPointsSPA), EV2(numPointsA,numAIME)!negV, Va2, A,A1, Y, lbA1, ubA1, AIME, Agrid1(numPointsA)
-    real (kind=rk) :: contEV(numPointsA, numAIME, numPointsSPA,numPointsY)
+    real (kind=sp) :: EV1(numPointsA,numAIME), EV2(numPointsA,numAIME)!negV, Va2, A,A1, Y, lbA1, ubA1, AIME, Agrid1(numPointsA)
+    real (kind=sp), allocatable :: contEV(:, :, :,:,:), EV1SPA(:,:,:,:) ! EV1SPA(numPointsA,numAIME,numPointsSPA)
     real (kind=rk) :: AIME1grid(numAIME), realisedV(numPointsY), mat(numPointsSPA,numPointsL,numPointsA), q(numPointsL,numPointsA),va !, checkA(numPointsA), check,  policyA1temp, negVtemp,
     real (kind=rk) :: uConst(numPointsSPA,numPointsL,numPointsA) !, check2, checkA2(numPointsA)
     real (kind=rk) ::poilcyL1(numPointsA,numPointsY), val1(numPointsA,numPointsY) !, temp(numPointsA, numAIME, numPointsSPA, numPointsY,numPointsL,numPointsA), EVPath(stopwrok-1)
     !real (kind=rk) ::tempL(numPointsA, numAIME, numPointsY), poilcyA1(numPointsA,numPointsY), poilcyA1wrk(numPointsA,numPointsY) !,tempA(numPointsA, numAIME, numPointsY,numPointsA), poilcyA1dnt(numPointsA,numPointsY)
     real (kind=hp) :: mutualInfo(numPointsA,numPointsY), signal(numPointsSPA,numPointsA,numPointsY) ,totalP(numPointsA,numPointsY,numpointsA*numPointsL) !, ent(numPointsA,numPointsY), testSUM(5)
     integer:: indexBigN(2), indexSmalln(2), singleIndex, typeSim !, AssetChoice(numPointsType, numPointsA, numAIME, numPointsY), lchoice(numPointsType, numPointsA, numAIME, numPointsY)
-    integer :: numTasks, tasksPerCore, leftOverTasks, thisCoreStart, thisCoreEnd, requiredl, spa, minSPA !, ixl2, ixA12, i,j
+    integer :: numTasks, tasksPerCore, leftOverTasks, thisCoreStart, thisCoreEnd, requiredl, spa, minSPA  !, ixl2, ixA12, i,j
+    integer ::  ixPost
+    type(policyType), allocatable :: policySL(:,:)
     character(len=1024) :: outFile !, outFile2
+    character(len=1) :: temp1
+    character(len=2) :: temp2
+    integer :: i1, i2, i3, i4 ,i5
     !character (50) :: format_numpeepcols_int
 #ifdef mpiBuild
     integer::  lcount, i !thisCoreStartStore, thisCoreEndStore,
@@ -197,7 +202,7 @@
     real (kind=rk), allocatable :: VecV(:), Vecpolicy(:), VecEV(:)
     real (kind=rk) :: tempV(mpiDim*numPointsY*numPointsSPA), temppolicy(mpiDim*numPointsSPA*numPointsY*numPointsL*numPointsA), tempEV(mpiDim*numPointsY*numPointsSPA)
     real (kind=rk), allocatable :: LocV(:), Locpolicy(:), LocEV(:)
-    integer :: locVecSize, otherDimP, testRank, thisCoreStartTest, thisCoreEndTest, start, finish,  otherDimV  !, age
+    integer :: locVecSize, otherDimP, testRank, thisCoreStartTest, thisCoreEndTest, start, finish,  otherDimV !, age
     integer(kind=4):: recvcounts(0:procSize-1), displ(0:procSize-1), mpiSIze
 
     !Test
@@ -206,12 +211,6 @@
     allocate(VecV(mpiDim*numPointsY*numPointsSPA), Vecpolicy(mpiDim*numPointsSPA*numPointsY*numPointsL*numPointsA), VecEV(mpiDim*numPointsY*numPointsSPA))
 #endif   
 
-    !To large to be static object
-    allocate(modelObjects%EV(numPointsA, numAIME, numPointsSPA,numPointsY))
-    allocate(modelObjects%policy(numPointsA, numAIME, numPointsSPA, numPointsY,numPointsL,numPointsA))
-    allocate(modelObjects%q(numPointsA, numAIME, numPointsY,numPointsL,numPointsA))
-    allocate(modelObjects%u(numPointsA, numAIME, numPointsSPA, numPointsY,numPointsL,numPointsA))
-    allocate(modelObjects%V(numPointsA, numAIME, numPointsSPA,numPointsY))
 
     !----------------------------------------------------------------------------------!
     ! Initialize MPI
@@ -236,26 +235,56 @@
     !modelObjects%V(Tperiods + 1,:,:,:,:,:) = 0
 
     !Initialise everything
-    modelObjects%EV  = 0.0          ! continuation value at T-1
-    modelObjects%V = 0.0
-    modelObjects%policy= 0.0
+    !modelObjects%EV  = 0.0          ! continuation value at T-1
+    !modelObjects%V = 0.0
+    !modelObjects%policy= 0.0
     !utlityShifter
-    do typeSim = 1, numPointsType
+    do typeSim =  1, numPointsType
         if (show .AND. rank==0) WRITE(*,*)  'Solving for type ', typeSim, ' of ',  numPointsType
+        allocate(contEV(dimVal(Tperiods,1), dimVal(Tperiods,2), dimVal(Tperiods,3),dimVal(Tperiods,4),dimVal(Tperiods,5)))
         contEV = 0.0
-        do ixt=Tperiods,1, -1                               ! Loop from time T-1 to 1
+        do ixt=Tperiods,1, -1
+            !if (ixt<=7) then
+            !!    !    write(*,*) 'Break'
+            !    stop
+            !end if
+
+            !Allocate space for value and policy functions
+            allocate(modelObjects%EV(dimVal(ixt,1), dimVal(ixt,2), dimVal(ixt,3),dimVal(ixt,4),dimVal(ixt,5)))
+            !allocate(modelObjects%policy(dimPol(ixt,1), dimPol(ixt,2), dimPol(ixt,3),dimPol(ixt,4),dimPol(ixt,5),dimPol(ixt,6),dimPol(ixt,7)))
+            allocate(modelObjects%policy(dimPol(ixt,1), dimPol(ixt,2), dimPol(ixt,3),dimPol(ixt,4),dimPol(ixt,5)))
+            !allocate(policySL(dimPol(ixt,3),dimPol(ixt,4)))
+
+            !allocate(modelObjects%q(numPointsA, numAIME, numPointsY,numPointsL,numPointsA))
+            !allocate(modelObjects%u(numPointsA, numAIME, numPointsSPA,   numPointsY,numPointsL,numPointsA))
+            allocate(modelObjects%V(dimVal(ixt,1), dimVal(ixt,2), dimVal(ixt,3),dimVal(ixt,4),dimVal(ixt,5)))
+
+            if (ixt <= TendRI-2 .AND. model == 3) then
+                allocate(EV1SPA(dimVal(ixt+1,1),dimVal(ixt+1,2),dimVal(ixt+1,3),dimVal(ixt+1,4)))
+            end if
+            !!numPointsA,numAIME,numPointsSPA
+            !if (ixt <= EndPeriodRI - 2 .AND. model == 3) then
+            !    !dimPost = choose(grids%supportSPA(ixt) - 1 + numPointsPost,numPointsPost)
+            !
+            !    write(*,*) "Size posterior ", grids%beliefStore(ixt)%sizePost
+            !    do ix= 1, grids%beliefStore(ixt)%sizePost
+            !        write(*,*) "Posterior space " , ix,  grids%beliefStore(ixt)%storePost(ix,:)
+            !    end do
+            !    !allocate(modelObjects%policy(numPointsA, numAIME, numPointsSPA, numPointsY, grids%beliefStore(ixt)%sizePost, numPointsL,numPointsA))
+            !    !allocate(modelObjects%V(numPointsA, numAIME, numPointsSPA,numPointsY, grids%beliefStore(ixt)%sizePost))! Loop from time T-1 to 1
+            !end if
             AIME1grid = grids%AIMEgrid(typeSim,ixt + 1, :)
             modelObjects%EV  = 0.0          ! continuation value at T-1
             modelObjects%V = 0.0
-            modelObjects%policy= 0.0
+            !modelObjects%policy= 0.0
             poilcyL1 = 0.0
             val1 = 0.0
             totalP = 0.0
             mutualInfo = 0.0
             signal = 0.0
             totalP = 0.0
-            do ixAIME = 1, numAIME
-                do ixA = 1, numPointsA                   ! points on asset grid
+            do ixAIME = 1, dimVal(ixt,2)
+                do ixA = 1, dimVal(ixt,1)                   ! points on asset grid
 
                     indexSmalln(1) = ixa
                     indexSmalln(2) = ixAIME
@@ -268,13 +297,16 @@
                             !earning potential
                             ! STEP 1. solve problem at grid points in assets, income + labour choices
                             ! ---------------------------------------------------------
-                            do ixY = 1, numPointsY               ! points on income grid
+                            do ixY = 1, dimVal(ixt,5)               ! points on income grid
                                 if (ixt >= EndPeriodRI) then
-                                    EV1  = contEV(:,:,1,ixY)  ! relevant section of EV matrix (in assets tomorrow)
+                                    allocate(modelObjects%policy(ixA,ixAIME, 1, 1,ixY)%coo(1) )
+                                    EV1  = contEV(:,:,1,1,ixY)  ! relevant section of EV matrix (in assets tomorrow)
                                     !include arbirtary SPA and copy results as you are definitely above it by this point and so don't care
                                     call solvePeriodRE(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, Tretire-1+TrueSPA, EV1, ixA1,ixl,Va)
-                                    modelObjects%policy(ixA,ixAIME, :,ixY,ixl,ixA1) = 1.0
-                                    modelObjects%V( ixA, ixAIME,:,ixY) = Va
+                                    modelObjects%policy(ixA,ixAIME, 1, 1,ixY)%coo(1)%row = ixl
+                                    modelObjects%policy(ixA,ixAIME, 1, 1,ixY)%coo(1)%col = ixA1
+                                    modelObjects%policy(ixA,ixAIME, 1, 1,ixY)%coo(1)%val = 1.0
+                                    modelObjects%V( ixA, ixAIME,1, 1,ixY) = Va
                                     !if (ixt==1) then
                                     !    AssetChoice(typeSim,ixA,ixAIME,ixY) = ixA1
                                     !    lChoice(typeSim,ixA,ixAIME,ixY) = ixl
@@ -282,51 +314,96 @@
                                 else
                                     if (uncerRE) then
                                         minSPA = maxval((/ixt-Tretire+2,1/))
-                                        EV2 =  contEV(:,:,numPointsSPA,ixY)
+                                        if (ixt + 1 < EndPeriodRI ) then
+                                            EV2 =  contEV(:,:,1,numPointsSPA,ixY)
+                                        else
+                                            EV1 =  contEV(:,:,1,1,ixY)
+                                        end if
                                         do spa = numPointsSPA,minSPA,-1
-                                            EV1  = params%p*EV2+ (1-params%p)*contEV(:,:,spa,ixY)  ! relevant section of EV matrix (in assets tomorrow)
+                                            allocate(modelObjects%policy(ixA,ixAIME, 1, spa,ixY)%coo(1) )
+                                            if (ixt + 1 < EndPeriodRI ) then
+                                                EV1  = params%p*EV2+ (1-params%p)*contEV(:,:,1,spa,ixY)  ! relevant section of EV matrix (in assets tomorrow)
+                                            end if
                                             !include arbirtary SPA and copy results as you are definitely above it by this point and so don't care
                                             call solvePeriodRE(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, Tretire-1+spa, EV1, ixA1,ixl,Va)
-                                            modelObjects%policy(ixA,ixAIME, spa,ixY,ixl,ixA1) = 1.0
-                                            modelObjects%V( ixA, ixAIME,spa,ixY) = Va
-                                            EV2 = contEV(:,:,spa,ixY)
+                                            !modelObjects%policy(ixA,ixAIME, 1,spa,ixY,ixl,ixA1) = 1.0
+                                            modelObjects%policy(ixA,ixAIME, 1, spa,ixY)%coo(1)%row = ixl
+                                            modelObjects%policy(ixA,ixAIME, 1, spa,ixY)%coo(1)%col = ixA1
+                                            modelObjects%policy(ixA,ixAIME, 1, spa,ixY)%coo(1)%val = 1.0
+                                            modelObjects%V( ixA, ixAIME, 1,spa,ixY) = Va
+                                            if (ixt + 1 < EndPeriodRI ) EV2 = contEV(:,:,1,spa,ixY)
                                         end do
                                         !if (spa >= 1 ) then
                                         !    modelObjects%policy(ixA,ixAIME, 1:spa,ixY,ixl,ixA1) = 1.0
                                         !    modelObjects%V( ixA, ixAIME,1:spa,ixY) = Va
                                         !end if
                                         if (ixt>=Tretire) then
+                                            do spa = 1,ixt-Tretire+1
+                                                allocate(modelObjects%policy(ixA,ixAIME, 1, spa,ixY)%coo(1) )
+                                            end do
                                             !solve once with SPA = current period
                                             !I know SPA and recieve it so continaution value is the same for all possible spa < ixt
-                                            EV1  = contEV(:,:,1,ixY)! relevant section of EV matrix (in assets tomorrow)
+                                            EV1  = contEV(:,:,1,1,ixY)! relevant section of EV matrix (in assets tomorrow)
                                             call solvePeriodRE(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, ixt, EV1, ixA1,ixl,Va)
-                                            modelObjects%policy(ixA,ixAIME, (/(spa,spa=1,ixt-Tretire+1)/),ixY,ixl,ixA1) = 1.0
-                                            modelObjects%V(ixA, ixAIME,(/(spa,spa=1,ixt-Tretire+1)/),ixY) = Va
+                                            !modelObjects%policy(ixA,ixAIME,1, (/(spa,spa=1,ixt-Tretire+1)/), ixY,ixl,ixA1) = 1.0
+                                            do spa = 1,ixt-Tretire+1
+                                                modelObjects%policy(ixA,ixAIME, 1, spa,ixY)%coo(1)%row = ixl
+                                                modelObjects%policy(ixA,ixAIME, 1, spa,ixY)%coo(1)%col = ixA1
+                                                modelObjects%policy(ixA,ixAIME, 1, spa,ixY)%coo(1)%val = 1.0
+                                            end do
+                                            modelObjects%V(ixA, ixAIME, 1,(/(spa,spa=1,ixt-Tretire+1)/), ixY) = Va
                                         end if
                                     else
                                         if (ixt == TendRI-1) then
-                                            EV1  = contEV(:,:,1,ixY)  ! relevant section of EV matrix (in assets tomorrow)
+                                            EV1  = contEV(:,:,1,1,ixY)  ! relevant section of EV matrix (in assets tomorrow)
                                             !If you SPA is max possible in the period before you know the SPA but haven't recieved it yet so it is ratonal
                                             !but you do care that you haven't yet received the SPA
+                                            allocate( modelObjects%policy(ixA,ixAIME, 1, numPointsSPA,ixY)%coo(1) )
                                             call solvePeriodRE(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, TendRI, EV1, ixA1,ixl,Va)
-                                            modelObjects%policy(ixA,ixAIME, numPointsSPA,ixY,ixl,ixA1) = 1.0
+                                            !modelObjects%policy(ixA,ixAIME, 1,numPointsSPA,ixY,ixl,ixA1) = 1.0
+                                            modelObjects%policy(ixA,ixAIME, 1, numPointsSPA,ixY)%coo(1)%row = ixl
+                                            modelObjects%policy(ixA,ixAIME, 1, numPointsSPA,ixY)%coo(1)%col = ixA1
+                                            modelObjects%policy(ixA,ixAIME, 1, numPointsSPA,ixY)%coo(1)%val = 1.0
+
                                             !modelObjects%q(ixA,ixAIME, ixY,ixl,ixA1) = 1.0
-                                            modelObjects%V( ixA, ixAIME,numPointsSPA,ixY) = Va
+                                            modelObjects%V( ixA, ixAIME,1,numPointsSPA,ixY) = Va
                                             !All other possible SPA are equivalent as you have recieved the SPA and so know what it is and don't care
+                                            do spa = 1,numPointsSPA-1
+                                                allocate(modelObjects%policy(ixA,ixAIME, 1, spa,ixY)%coo(1) )
+                                            end do
                                             call solvePeriodRE(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, TendRI-1, EV1, ixA1,ixl,Va)
-                                            modelObjects%policy(ixA,ixAIME, (/(spa,spa=1,numPointsSPA-1)/),ixY,ixl,ixA1) = 1.0
+                                            !modelObjects%policy(ixA,ixAIME,1, (/(spa,spa=1,numPointsSPA-1)/),ixY,ixl,ixA1) = 1.0
+                                            do spa = 1,numPointsSPA-1
+                                                modelObjects%policy(ixA,ixAIME, 1, spa,ixY)%coo(1)%row = ixl
+                                                modelObjects%policy(ixA,ixAIME, 1, spa,ixY)%coo(1)%col = ixA1
+                                                modelObjects%policy(ixA,ixAIME, 1, spa,ixY)%coo(1)%val = 1.0
+                                            end do
                                             !modelObjects%q(ixA,ixAIME,ixY,ixl,ixA1) = 1.0
-                                            modelObjects%V(ixA, ixAIME,(/(spa,spa=1,numPointsSPA-1)/),ixY) = Va
+                                            modelObjects%V(ixA, ixAIME,1,(/(spa,spa=1,numPointsSPA-1)/),ixY) = Va
                                         else
-                                            EV1SPA  = contEV(:,:,:,ixY)  ! relevant section of EV matrix (in assets tomorrow)
+                                            !do ixPost = 1, dimVal(ixt,3)
+                                            EV1SPA  = contEV(:,:,:,:,ixY)  ! relevant section of EV matrix (in assets tomorrow)
                                             !Set SPA to be TendRI as just need something greater than current age
                                             minSPA = maxval((/ixt-Tretire+2,1/))
                                             mat=0.0
-                                            call solvePeriodRI(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, TendRI, EV1SPA, &
-                                                mat(minSPA:numPointsSPA,:,:) ,modelObjects%V(ixA, ixAIME,minSPA:numPointsSPA,ixY), q, uConst )
-                                            modelObjects%policy(ixA,ixAIME, :,ixY,:,:) = mat
-                                            modelObjects%q(ixA,ixAIME, ixY,:,:) = q
-                                            modelObjects%u(ixA,ixAIME, :,ixY,:,:) = uConst
+                                            if (ixa == 30 .and. ixaime == 6 .and. ixy == 10) then
+                                                continue
+                                            end if
+                                            !modelObjects%policy(ixA,ixAIME, :, minSPA:numPointsSPA,ixY)
+
+                                            call solvePeriodRI(params, grids, ixy, ixA, ixAIME ,ixt,typeSim,TendRI, EV1SPA, &
+                                                modelObjects%policy(ixA,ixAIME, :, minSPA:numPointsSPA,ixY) ,modelObjects%V(ixA, ixAIME,:,minSPA:numPointsSPA,ixY), q, uConst )
+
+                                            !do ixpost = 1, dimval(ixt,3)
+                                            !    do k = 1, grids%supportSPA(ixt)
+                                            !        policyout(ixA,ixAIME, ixpost, minSPA-1+k,ixY)%coo = policy(ixpost,k)%coo
+                                            !    end do
+                                            !end do
+
+                                            !modelObjects%policy(ixA,ixAIME, ixPost, :,ixY,:,:) = mat
+                                            !modelObjects%q(ixA,ixAIME, ixY,:,:) = q
+                                            !modelObjects%u(ixA,ixAIME, :,ixY,:,:) = uConst
+                                            !end do
                                             !if (ixy==5 .AND. ixa ==6 .AND. ixAIME==1) then
                                             !    call solvePeriodRE(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, TendRI, EV1SPA(:,:,numPointsSPA), ixA1,ixl,Va)
                                             !    check = sum(mat(numPointsSPA,2,:))!sum(modelObjects%policy(ixt,typeSim,ixA,ixAIME, 11,ixY,:,:))
@@ -336,15 +413,52 @@
                                             !checkA = sum(mat(numPointsSPA,:,:),1)
                                             !!check2 = sum(mat(numPointsSPA-1,2,:))!sum(modelObjects%policy(ixt,typeSim,ixA,ixAIME, 11,ixY,:,:))
                                             !!checkA2 = sum(mat(numPointsSPA-1,:,:),1)
+
                                             if (ixt>=Tretire) then
+                                                do spa = 1,ixt-Tretire+1
+                                                    do ixpost = 1, dimval(ixt,3)
+                                                        allocate(modelObjects%policy(ixA,ixAIME, ixpost, spa,ixY)%coo(1) )
+                                                    end do
+                                                end do
                                                 !solve once with SPA = current period
                                                 !I know SPA and recieve it so continaution value is the same for all possible spa < ixt
-                                                EV1  = contEV(:,:,1,ixY)! relevant section of EV matrix (in assets tomorrow)
+                                                EV1  = contEV(:,:,1,1,ixY)! relevant section of EV matrix (in assets tomorrow)
                                                 call solvePeriodRE(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, ixt, EV1, ixA1,ixl,Va)
-                                                modelObjects%policy(ixA,ixAIME, (/(spa,spa=1,ixt-Tretire+1)/),ixY,ixl,ixA1) = 1.0
+                                                !modelObjects%policy(ixA,ixAIME, :,(/(spa,spa=1,ixt-Tretire+1)/), ixY,ixl,ixA1) = 1.0
+                                                do spa = 1,ixt-Tretire+1
+                                                    do ixpost = 1, dimval(ixt,3)
+                                                        modelObjects%policy(ixA,ixAIME, ixpost, spa,ixY)%coo(1)%row = ixl
+                                                        modelObjects%policy(ixA,ixAIME, ixpost, spa,ixY)%coo(1)%col = ixA1
+                                                        modelObjects%policy(ixA,ixAIME, ixpost, spa,ixY)%coo(1)%val = 1.0
+                                                    end do
+                                                end do
                                                 ! modelObjects%q(ixA,ixAIME, ixY,ixl,ixA1) = 1.0
-                                                modelObjects%V(ixA, ixAIME,(/(spa,spa=1,ixt-Tretire+1)/),ixY) = Va
+                                                modelObjects%V(ixA, ixAIME,:,(/(spa,spa=1,ixt-Tretire+1)/), ixY) = Va
                                             end if
+
+                                            !do ixFlag = 1, dimVal(ixt,4)
+                                            !    if (ixFlag == flgRcvd) then
+                                            !        !solve once with SPA = current period
+                                            !        !I know SPA and recieve it so continaution value is the same for all possible spa < ixt
+                                            !        EV1  = contEV(:,:,1,flgRcvd,ixY)! relevant section of EV matrix (in assets tomorrow)
+                                            !        call solvePeriodRE(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, ixt, EV1, ixA1,ixl,Va)
+                                            !        modelObjects%policy(ixA,ixAIME, (/(spa,spa=1,ixt-Tretire+1)/), 1,ixY,ixl,ixA1) = 1.0
+                                            !        ! modelObjects%q(ixA,ixAIME, ixY,ixl,ixA1) = 1.0
+                                            !        modelObjects%V(ixA, ixAIME,(/(spa,spa=1,ixt-Tretire+1)/), 1,ixY) = Va
+                                            !    else
+                                            !        do ixPost = 1, dimVal(ixt,3)
+                                            !            EV1SPA  = contEV(:,:,:,:,ixY)  ! relevant section of EV matrix (in assets tomorrow)
+                                            !            !Set SPA to be TendRI as just need something greater than current age
+                                            !            minSPA = maxval((/ixt-Tretire+2,1/))
+                                            !            mat=0.0
+                                            !            call solvePeriodRI(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, TendRI, EV1SPA, &
+                                            !                modelObjects%policy(ixA,ixAIME, :, 1,ixY,:,:),modelObjects%V(ixA, ixAIME,minSPA:numPointsSPA, 1,ixY), q, uConst )
+                                            !            !modelObjects%policy(ixA,ixAIME, :,ixY,:,:) = mat
+                                            !            modelObjects%q(ixA,ixAIME, ixY,:,:) = q
+                                            !            modelObjects%u(ixA,ixAIME, :,ixY,:,:) = uConst
+                                            !        end do
+                                            !    end if
+                                            !end do
                                         end if
                                     end if
                                 end if
@@ -352,31 +466,43 @@
                         else
                             !Can't work at this stage and you are past any possible SPA so pass in arbitrary value for ixy (= 1) and SPA9=60) and
                             !hardcode ixl=0(not work)
-                            call maxutility(params, grids,ixt,typeSim,ixa,ixAIME,0,  1,Tretire,  contEV(:,:,1,1),ixa1,va)
+                            do ixY = 1, dimVal(ixt,5)
+                                allocate( modelObjects%policy(ixA,ixAIME, 1, 1,ixY)%coo(1))
+                            end do
+                            call maxutility(params, grids,ixt,typeSim,ixa,ixAIME,0,  1,Tretire,  contEV(:,:,1,1,1),ixa1,va)
 
                             !Copy to all values of SPA and ixy as don't affect decsion at these ages
-                            modelObjects%policy(ixA,ixAIME,:,:,1,ixA1)=1.0
-                            modelObjects%V(ixA,ixAIME,:,:)       = va
+                            !modelObjects%policy(ixA,ixAIME,:, 1,:,1,ixA1)=1.0
+                            do ixY = 1, dimVal(ixt,5)
+                                modelObjects%policy(ixA,ixAIME, 1, 1,ixY)%coo(1)%row = 1
+                                modelObjects%policy(ixA,ixAIME, 1, 1,ixY)%coo(1)%col = ixA1
+                                modelObjects%policy(ixA,ixAIME, 1, 1,ixY)%coo(1)%val = 1.0
+                            end do
+                            modelObjects%V(ixA,ixAIME,:, 1,:)       = va
                         end if
 
                         ! STEP 2. integrate out income today conditional on income
                         ! yesterday to get EV and EdU
                         ! --------------------------------------------------------
                         if (ixt >= EndPeriodRI) then
-                            realisedV(:) = modelObjects%V(ixA,ixAIME,1,:)
+                            realisedV(:) = modelObjects%V(ixA,ixAIME, 1,1,:)
                             do ixY = 1,numPointsY,1
-                                modelObjects%EV(ixA,ixAIME,1,ixY)  = dot_product(grids%incTransitionMrx(ixY,:),realisedV)
-                                modelObjects%EV(ixA,ixAIME,:,ixY) = modelObjects%EV(ixA,ixAIME,1,ixY)
+                                modelObjects%EV(ixA,ixAIME,1,1,ixY)  = dot_product(grids%incTransitionMrx(ixY,:),realisedV)
+                                modelObjects%EV(ixA,ixAIME,1,1,ixY) = modelObjects%EV(ixA,ixAIME,1,1,ixY)
                             end do !ixY
                         else
-                            do spa = 1,numPointsSPA
-                                realisedV(:) = modelObjects%V(ixA,ixAIME,spa,:)
-                                do ixY = 1,numPointsY,1
-                                    modelObjects%EV(ixA,ixAIME,spa,ixY)  = dot_product(grids%incTransitionMrx(ixY,:),realisedV)
-                                    if (modelObjects%EV(ixA,ixAIME,spa,ixY) /= modelObjects%EV(ixA,ixAIME,spa,ixY)) then
-                                        continue
-                                    end if
-                                end do !ixY
+                            do ixPost = 1, dimVal(ixt,3)
+                                do spa = 1,numPointsSPA
+                                    realisedV(:) = modelObjects%V(ixA,ixAIME,ixPost,spa,:)
+                                    do ixY = 1,numPointsY,1
+                                        modelObjects%EV(ixA,ixAIME,ixPost,spa,ixY)  = dot_product(grids%incTransitionMrx(ixY,:),realisedV)
+                                        if (modelObjects%EV(ixA,ixAIME,ixPost,spa,ixY) /= modelObjects%EV(ixA,ixAIME,ixPost,spa,ixY)) then
+                                            continue
+                                        else if (modelObjects%EV(ixA,ixAIME,ixPost,spa,ixY)>0.0 ) then
+                                            write(*,*) "pos util"
+                                        end if
+                                    end do !ixY
+                                end do
                             end do
                         end if
                     end if
@@ -458,37 +584,88 @@
             call mpi_barrier(mpi_comm_world, ierror)
             if (ierror.ne.0) stop 'mpi problem180'
 #endif  
-            contEV =  modelObjects%EV
+            deallocate(contEV)
+            if (ixt > 1 ) then
+                allocate(contEV(dimVal(ixt,1), dimVal(ixt,2), dimVal(ixt,3),dimVal(ixt,4),dimVal(ixt,5)))
+                contEV =  modelObjects%EV
+            end if
+
             if (show .AND. rank==0) WRITE(*,*)  'Passed period ', ixt, ' of ',  Tperiods
 
             if (rank==0) then
-                write (outFile, *), trim(trim(pathDataStore) // "polType"),typeSim,trim("Period"),ixt,".txt"
-                outfile=ADJUSTL(outfile)
-                inquire (iolength=requiredl)  modelObjects%policy
-                open (unit=201,form="unformatted", file=outfile, status='unknown',recl=requiredl, action='write')
-                write (201)  modelObjects%policy
-                close( unit=201)
+                !do ixAIME = 1, dimVal(ixt,2)
 
-                write (outFile, *), trim(trim(pathDataStore) // "EVType"),typeSim,trim("Period"),ixt,".txt"
-                outfile=ADJUSTL(outfile)
-                inquire (iolength=requiredl)  modelObjects%EV
-                open (unit=201,form="unformatted", file=outfile, status='unknown',recl=requiredl, action='write')
-                write (201)  modelObjects%EV
-                close( unit=201)
 
-                write (outFile, *), trim(trim(pathDataStore) // "qType"),typeSim,trim("Period"),ixt,".txt"
-                outfile=ADJUSTL(outfile)
-                inquire (iolength=requiredl)  modelObjects%q
-                open (unit=201,form="unformatted", file=outfile, status='unknown',recl=requiredl, action='write')
-                write (201)  modelObjects%q
-                close( unit=201)
+                !if (ixt==17) then
+                !    do ixAIME = 1, dimVal(ixt,2)
+                !        do ixA = 1, dimVal(ixt,1)                   ! points on asset grid
+                !            do ixY = 1, dimVal(ixt,5)               ! points on income grid
+                !                do SPA = 1,numpointsSPA
+                !                    do ixpost = 1, dimVal(ixt,3)
+                !                        if (size(modelObjects%policy(ixa,ixaime,ixpost,spa,ixy)%coo)<1) then
+                !                            write(*,*) 'Break!!!'
+                !
+                !                        end if
+                !                    end do
+                !                end do
+                !            end do
+                !        end do
+                !    end do
+                !end if
 
-                write (outFile, *), trim(trim(pathDataStore) // "uType"),typeSim,trim("Period"),ixt,".txt"
+                write (temp1,'(I1)') typeSim
+                write (temp2,'(I2)') ixt
+                !write (outFile, *), trim(trim(pathDataStore) // "polType"),trim(adjustl(temp1)),trim("Period"),trim(adjustl(temp2)),".txt"
+
+                write (outFile, *), trim(trim(pathDataStore) // "polType"),trim(adjustl(temp1)),trim("Period"),trim(adjustl(temp2)),".txt"!,trim("AIME"),ixAIME
                 outfile=ADJUSTL(outfile)
-                inquire (iolength=requiredl)  modelObjects%u
-                open (unit=201,form="unformatted", file=outfile, status='unknown',recl=requiredl, action='write')
-                write (201)  modelObjects%u
+                !!inquire (iolength=requiredl)  modelObjects%policy(:,ixaime,:,:,:)  !ACCESS='stream', !recl=requiredl
+                open (unit=201,form="unformatted", file=outfile, status='unknown', action='write')
+                !write (201)  modelObjects%policy
+                do i5=1,dimPol(ixt,5)
+                    do i4 = 1,dimPol(ixt,4)
+                        do i3 = 1,dimPol(ixt,3)
+                            do i2 = 1,dimPol(ixt,2)
+                                do i1 = 1, dimPol(ixt,1)
+                                    write(201) size(modelObjects%policy(i1,i2,i3,i4,i5)%COO)
+                                    !allocate(modelObjects%policy(i1,i2,i3,i4,i5)%COO(sizeCOO))
+                                    write(201) modelObjects%policy(i1,i2,i3,i4,i5)%COO
+                                end do
+                            end do
+                        end do
+                    end do
+                end do
                 close( unit=201)
+                !end do
+
+                !if (ixt == 1) then
+                !    allocate(modelObjects2%policy(dimPol(ixt,1), dimPol(ixt,2), dimPol(ixt,3),dimPol(ixt,4),dimPol(ixt,5)))
+                !    open (unit=201,form="unformatted", file=outfile, status='unknown', action='read') !ACCESS='stream',
+                !    read (201) modelObjects2%policy
+                !    close( unit=201 )
+                !    deallocate(modelObjects2%policy)
+                !
+                !end if
+                !write (outFile, *), trim(trim(pathDataStore) // "EVType"),typeSim,trim("Period"),ixt,".txt"
+                !outfile=ADJUSTL(outfile)
+                !inquire (iolength=requiredl)  modelObjects%EV
+                !open (unit=201,form="unformatted", file=outfile, status='unknown',recl=requiredl, action='write')
+                !write (201)  modelObjects%EV
+                !close( unit=201)
+                !
+                !write (outFile, *), trim(trim(pathDataStore) // "qType"),typeSim,trim("Period"),ixt,".txt"
+                !outfile=ADJUSTL(outfile)
+                !inquire (iolength=requiredl)  modelObjects%q
+                !open (unit=201,form="unformatted", file=outfile, status='unknown',recl=requiredl, action='write')
+                !write (201)  modelObjects%q
+                !close( unit=201)
+                !
+                !write (outFile, *), trim(trim(pathDataStore) // "uType"),typeSim,trim("Period"),ixt,".txt"
+                !outfile=ADJUSTL(outfile)
+                !inquire (iolength=requiredl)  modelObjects%u
+                !open (unit=201,form="unformatted", file=outfile, status='unknown',recl=requiredl, action='write')
+                !write (201)  modelObjects%u
+                !close( unit=201)
 
                 if (ixt < stopwrok .AND. intermediateToFile) then
                     !    write (format_numpeepcols_int,*),'(',numPointsY
@@ -631,6 +808,17 @@
                 !close( unit=201)
 
             end if
+
+            !if (ixt == EndPeriodRI-1  .AND. .NOT. uncerRE) then
+            !    deallocate( modelObjects%policy, modelObjects%V )
+            !end if
+
+            deallocate(modelObjects%EV, modelObjects%policy,modelObjects%V) !modelObjects%q, modelObjects%u, policySL
+            if (ixt <= TendRI-2 .AND. model == 3) then
+                deallocate(EV1SPA)
+            end if
+            !if (ixt<Tperiods) deallocate()
+
         end do !ixt
 
         if (rank==0 .AND. intermediateToFile) then
@@ -676,10 +864,41 @@
     call  linearinterp1(grids%AIMEgrid(ixType,ixP + 1, :),EV1, numAIME, AIME, VA1, 1, 1 )
     VB1 = params%thetab*((A1+params%K)**(1-params%gamma))/(1-params%gamma)
 
-    objectivefunc = utility(params,cons,L)/params%lambda + params%beta * ((1- grids%mortal(ixP))* VA1+grids%mortal(ixP+1)*VB1)
+    objectivefunc = utility(params,cons,L) + params%beta * ((1- grids%mortal(ixP+1))* VA1+grids%mortal(ixP+1)*VB1)
 
 
     end function
+    !! ---------------------------------------------------------------------------------------------------------!
+    !! ---------------------------------------------------------------------------------------------------------!
+    !!!Objective function
+    !function objectivefunc2(params, grids, A1, A0, Y,L,ixP,ixType, AIME) !, EV1,prior,qtilde
+    !implicit none
+    !!inputs
+    !type (structparamstype), intent(in) :: params
+    !type (gridsType), intent(in) :: grids
+    !real (kind=rk), intent(in) :: A1, A0, Y, AIME
+    !integer, intent(in) :: ixP, L, ixType
+    !!real(kind=rk) :: qtilde(:,:), EV1(:)
+    !!real(kind=rk) :: prior(numpointsspa)
+    !
+    !!ouptut
+    !real (kind=rk) :: objectivefunc2
+    !!local
+    !real (kind=rk) :: cons, VA1, VB1
+    !
+    !!Get tomorrow's consumption (cons), the value of left over assets (VA1) and
+    !!total value (u(c) + b * VA1
+    !cons = A0  + Y - (A1)/(1+params%r)
+    !
+    !!call valueFncIter(ev1,qtilde,prior,grids%beliefStore(ixp+1)%sizepost ,va1)
+    !
+    !!VB1 = params%thetab*((A1+params%K)**(1-params%gamma))/(1-params%gamma)
+    !
+    !objectivefunc2 = utility(params,cons,L)/params%lambda ! + params%beta * ((1- grids%mortal(ixP+1))* va1+grids%mortal(ixP+1)*VB1)
+    !
+    !
+    !end function
+
 
     ! ---------------------------------------------------------------------------------------------------------!
     ! ---------------------------------------------------------------------------------------------------------!
@@ -706,10 +925,12 @@
     !10/112 comuniting time -10/112
     les=(L)*(1-params%hrsWrk )+(1-L);
     if (params%gamma == 1) then
-        utility = log((cons*cevChng)**params%nu*les**(1-params%nu));
+        utility = log((cons*cevChng)**params%nu*les**(1-params%nu))
     else
-        utility= ((((cons*cevChng)**params%nu)*(les**(1-params%nu)))**(1-params%gamma)  )/(1-params%gamma);
+        utility= ((((cons*cevChng)**params%nu)*(les**(1-params%nu)))**(1-params%gamma)  )/(1-params%gamma)
     end if
+
+    utility = utility/params%lambda
 
     end function
 
@@ -770,7 +991,7 @@
     integer, intent(in) :: SPAin
     logical, intent(in) :: delCache
 
-    real (kind=rk), intent(in) :: yex(Tperiods, numSims)
+    real (kind=rk), intent(inout) :: yex(Tperiods, numSims)
 
     !outputs
     real (kind=rk), intent(out) :: y(Tperiods, numSims) !income
@@ -787,27 +1008,31 @@
     !local
     type (modelObjectsType) :: modelObjects
     real (kind=rk) :: startingA(numSims), startAIME(numSims), check, check1, check2, checkMax !, Aval, AIMEval
-    integer :: s, t, idxAIME(1), idxY(numSims) !, workAge, idxA(1)
+    integer :: s, t, idxAIME(1), idxY(numSims), idxYU !, workAge, idxA(1)
     integer :: typeSim !,seedIn, Lcube(8)
     !real (kind=rk) ::  ltemp, lbA1, EV1(numPointsA ,numAIME)
     INTEGER :: i, j !, n, uniformInt(numSims)
     !INTEGER, DIMENSION(:), ALLOCATABLE :: seed
     integer :: unemployed(numSims) !1 employed, 2 unemploeyed
     !type (locmodelObjectsType):: LocmodelObjects(2)
-    type (modelObjectsType):: LocmodelObjects(2)
+    !type (modelObjectsType):: LocmodelObjects(2)
     !real (kind=rk) :: LocEV(Tperiods+1,  numPointsType, numPointsA, numAIME, numPointsSPA,numPointsProd,2);
     real (kind=rk) :: gridY(numPointsProd), Yval, ccp(numPointsL*numPointsA), policy(numAIME, numpointsprod, numPointsL*numPointsA), ccpTemp(numPointsL*numPointsA),  ccpSPA(numPointsL*numPointsA,numPointsSPA)
-    real (kind=rk) :: mat(numPointsL,numPointsA), cumsum, posterior(Tperiods + 1,numSims, numPointsSPA), prior(Tperiods + 1, numSims, numPointsSPA)!, denom, q, unifposterior( numPointsSPA)
-    integer :: idxa1, typesimOld, lcount, decision
+    real (kind=rk) :: mat(numPointsL,numPointsA), cumsum, posterior(TendRI,numSims, numPointsSPA), prior(TendRI, numSims, numPointsSPA)!, denom, q, unifposterior( numPointsSPA)
+    integer :: idxa1, typesimOld, lcount, decision, ios
     character(len=1024) :: outFile
-    integer :: SPA, requiredl, spaResponse(434) !, mode(1)
+    character (len=1):: temp1
+    character (len=2):: temp2
+    integer :: SPA, requiredl, spaResponse(434), startSPA !, mode(1)
     character (20) :: format_numpeepcols_int
-    real (kind=rk) :: sppath(numSims), dbpath(numsims), q, weight = 0.8
+    real (kind=rk) :: sppath(numSims), dbpath(numsims), q, initPrior(numPointsSPA), weight = 0.8
+    integer ::  initPriorPos(1), priorPos(Tperiods+1,numSims,1), k, start
 
     real (kind=rk), allocatable :: locposteriorSPA(:,:,:, :,  :,:)
 
     integer :: maxVec(5), pointState(TendRI, numSims,5), statesVisited(TendRI,numPointsType,numPointsA, numAIME,  numPointsY) = 0
     integer :: aimeInt(Tperiods,numSims), yint(Tperiods, numSims)
+    integer :: i1, i2, i3, i4, i5, sizeCOO
 
     logical :: maks(TendRI,numPointsType,numPointsA, numAIME, numPointsY)
 
@@ -821,41 +1046,39 @@
     end do
     !startaime = 7351 !15500 !
 
-    !To large to be static object
-    allocate(modelObjects%EV(numPointsA, numAIME, numPointsSPA,numPointsY))
-    allocate(modelObjects%policy(numPointsA, numAIME, numPointsSPA, numPointsY,numPointsL,numPointsA))
-    allocate(modelObjects%u(numPointsA, numAIME, numPointsSPA, numPointsY,numPointsL,numPointsA))
-    allocate(modelObjects%q(numPointsA, numAIME, numPointsY,numPointsL,numPointsA))
-    allocate(modelObjects%V(numPointsA, numAIME, numPointsSPA,numPointsY))
-    allocate(locposteriorSPA(TendRI,numPointsType,numPointsA, numAIME,  numPointsY,numPointsSPA))
-    !open (unit = 1001,file=trim(pathMoments) // 'prior.txt', action='read')
-    !read (1001, *) spaResponse
-    !close (unit = 1001)
-    !spaResponse = spaResponse - 59
-    !do lcount = 1, numsims
-    !    i = mod(lcount-1,434) + 1
-    !    prior(1,lcount,:) = grids%posteriorSPA(1,1,1,1,1,:)
-    !    if (.NOT. spaResponse(i) == 3) then
-    !        prior(1,lcount,spaResponse(i)) = prior(1,lcount,spaResponse(i)) +  0.1 + (prior(1,lcount,3)- prior(1,lcount,spaResponse(i)))
-    !        prior(1,lcount,:) = prior(1,lcount,:) / sum(prior(1,lcount,:))
-    !    end if
-    !end do
     checkMax = 0.0
     typesimOld = 4
     !write (*,*) 'b'
     s=0
     !unifposterior( :) = grids%posteriorSPA(1,:)
+    if (modelChoice > 2) then
+        initPrior = grids%posteriorSPA(1,1,1, 1,1,:)
+        !initPriorPos
+        call nearestDistLoc(grids,initPrior,1,initPriorPos)
+    end if
 
-    do t = 1,tperiods,1                              ! loop through time periods for a particular individual
+    start = 1
+    if (start > 1) then
+        yex(start,:) = yex(1,:)
+    end if
+    do t = start,tperiods,1                              ! loop through time periods for a particular individual
         if (counterFact == .TRUE. .AND. t==9) then
             !SPA = SPA + 1
         end if
-        !mode = MAXLOC(unifposterior)
-        !write (*,*) 'Uniformed mode', mode(1)
-        !unifposterior = matmul(params%spaTransMat,unifposterior)
+        write (*,*) "Simulation period t : ", t
+        !allocate(modelObjects%EV(numPointsA, numAIME, numPointsSPA,numPointsY))
+        allocate(modelObjects%policy(dimPol(t,1), dimPol(t,2), dimPol(t,3),dimPol(t,4),dimPol(t,5)))
         do s = 1,numsims,1
             !Initialise beliefs
-            if (modelChoice > 2 .AND. t==1) prior(1,s,:) = grids%posteriorSPA(1,1,1, 1,1,:) !grids%posteriorSPA(1,:)
+            if (t==start) then
+                if (modelChoice > 2) then
+                    prior(t,s,:) = initPrior !grids%posteriorSPA(1,:)
+                    priorPos(t,s,:) = initPriorPos
+                else
+                    priorPos(:,s,:) = 1
+                end if
+            end if
+            if (t == EndPeriodRI ) SPA = 1
             !write (*,*) "sim ", s
             if (numpointstype == 1) then
                 typesim = 1
@@ -870,69 +1093,106 @@
                     typesim =4
                 end if
             end if
-            if (t==1) then
-                a(1, s) = minloc(abs(startinga(s)-grids%Agrid(typesim,1,:)),1)
-                aime(1,s)=startaime(s)
+            if (t==start) then
+                a(t, s) = minloc(abs(startinga(s)-grids%Agrid(typesim,1,:)),1)
+                aime(t,s)=startaime(s)
             end if
             !write (*,*) 'c'
             if (typesimOld .NE. typesim) then
-                write (outFile, *), trim(trim(pathDataStore) // "polType"),typeSim,trim("Period"),t,".txt"
+                !k=49
+                deallocate(modelObjects%policy)
+                allocate(modelObjects%policy(dimPol(t,1), dimPol(t,2), dimPol(t,3),dimPol(t,4),dimPol(t,5)))
+
+
+                !format_numpeepcols = '(' // trim(adjustl(temp)) // 'f15.2' // ')'
+
+                !outFile = trim(path_in) // 'Agrid'// trim(adjustl(temp)) // '.txt'
+                !outfile=ADJUSTL(outfile)
+
+                write (temp1,'(I1)') typeSim
+                write (temp2,'(I2)') t
+                write (outFile, *), trim(trim(pathDataStore) // "polType"),trim(adjustl(temp1)),trim("Period"),trim(adjustl(temp2)),".txt"
                 outfile=ADJUSTL(outfile)
                 !write (*,*) 'd', outFile
-                open (unit=201,form="unformatted", file=outfile, status='unknown', action='read')
-                read (201) modelObjects%policy
+                !allocate(modelObjects%policy(1,1,1,1,1)%COo(1))
+                open (unit=201,form="unformatted", file=outfile, status='unknown', action='read', iostat = ios) !ACCESS='stream',
+                !read (201) modelObjects%policy
+                !if (typeSim==1 .or. typeSim==3) then
+                !    read (201) modelObjects%policy
+                !else
+                do i5=1,dimPol(t,5)
+                    do i4 = 1,dimPol(t,4)
+                        do i3 = 1,dimPol(t,3)
+                            do i2 = 1,dimPol(t,2)
+                                do i1 = 1, dimPol(t,1)
+                                    read(201) sizeCOO
+                                    allocate(modelObjects%policy(i1,i2,i3,i4,i5)%COO(sizeCOO))
+                                    read(201) modelObjects%policy(i1,i2,i3,i4,i5)%COO
+                                end do
+                            end do
+                        end do
+                    end do
+                end do
+                !end if
+
                 if (delCache) then
-                    close( unit=201,  status='delete' )
+                    !close( unit=201,  status='delete' )
+                    close( unit=201 )
                 else
                     close( unit=201 )
                 end if
 
-                write (outFile, *), trim(trim(pathDataStore) // "qType"),typeSim,trim("Period"),t,".txt"
-                outfile=ADJUSTL(outfile)
-                !write (*,*) 'd', outFile
-                open (unit=201,form="unformatted", file=outfile, status='unknown', action='read')
-                read (201) modelObjects%q
-
-                !i=19
-                write (outFile, *), trim(trim(pathDataStore) // "uType"),typeSim,trim("Period"),t,".txt"
-                outfile=ADJUSTL(outfile)
-                !write (*,*) 'd', outFile
-                open (unit=201,form="unformatted", file=outfile, status='unknown', action='read')
-                read (201) modelObjects%u
-                !stop
-
-                if (delCache) then
-                    close( unit=201,  status='delete' )
-                else
-                    close( unit=201 )
-                end if
-
-                write (outFile, *), trim(trim(pathDataStore) // "EVType"),typeSim,trim("Period"),t,".txt"
-                outfile=ADJUSTL(outfile)
-                !write (*,*) 'e', outFile
-                open (unit=201,form="unformatted", file=outfile, status='unknown',action='read')
-                read (201) modelObjects%EV
-                if (delCache) then
-                    close( unit=201,  status='delete' )
-                else
-                    close( unit=201 )
-                end if
+                !write (outFile, *), trim(trim(pathDataStore) // "qType"),typeSim,trim("Period"),t,".txt"
+                !outfile=ADJUSTL(outfile)
+                !!write (*,*) 'd', outFile
+                !open (unit=201,form="unformatted", file=outfile, status='unknown', action='read')
+                !read (201) modelObjects%q
+                !
+                !!i=19
+                !write (outFile, *), trim(trim(pathDataStore) // "uType"),typeSim,trim("Period"),t,".txt"
+                !outfile=ADJUSTL(outfile)
+                !!write (*,*) 'd', outFile
+                !open (unit=201,form="unformatted", file=outfile, status='unknown', action='read')
+                !read (201) modelObjects%u
+                !!stop
+                !
+                !if (delCache) then
+                !    close( unit=201,  status='delete' )
+                !else
+                !    close( unit=201 )
+                !end if
+                !
+                !write (outFile, *), trim(trim(pathDataStore) // "EVType"),typeSim,trim("Period"),t,".txt"
+                !outfile=ADJUSTL(outfile)
+                !!write (*,*) 'e', outFile
+                !open (unit=201,form="unformatted", file=outfile, status='unknown',action='read')
+                !read (201) modelObjects%EV
+                !if (delCache) then
+                !    close( unit=201,  status='delete' )
+                !else
+                !    close( unit=201 )
+                !end if
 
                 !write (*,*) 'f'
-                LocmodelObjects(1)%policy =  modelObjects%policy(:,:,:,(/(i,i=1,numPointsY-1,2)/),:,:)
-                !write (*,*) 'g'
-                LocmodelObjects(2)%policy =  modelObjects%policy(:,:,:,(/(i,i=2,numPointsY,2)/),:,:)
+                !write (*,*) 		modelObjects%policy(1,1,1,1,1)%COO(1)%COL, &
+                !    modelObjects%policy(1,1,1,1,1)%COO(1)%ROW, &
+                !    modelObjects%policy(1,1,1,1,1)%COO(1)%VAL	! Undefined address
 
-                LocmodelObjects(1)%u =  modelObjects%u(:,:,:,(/(i,i=1,numPointsY-1,2)/),:,:)
-                !write (*,*) 'g'
-                LocmodelObjects(2)%u =  modelObjects%u(:,:,:,(/(i,i=2,numPointsY,2)/),:,:)
+                !write(*,*)  modelObjects%policy(:,:,:,:,(/(i,i=1,numPointsY-1,2)/))
 
-                LocmodelObjects(1)%q =  modelObjects%q(:,:,(/(i,i=1,numPointsY-1,2)/),:,:)
-                !write (*,*) 'g'
-                LocmodelObjects(2)%q =  modelObjects%q(:,:,(/(i,i=2,numPointsY,2)/),:,:)
+                !LocmodelObjects(1)%policy =  modelObjects%policy(:,:,:,:,(/(i,i=1,numPointsY-1,2)/))
+                !LocmodelObjects(2)%policy =  modelObjects%policy(:,:,:,:,(/(i,i=2,numPointsY,2)/))
 
-                LocmodelObjects(1)%EV =  modelObjects%EV(:,:,:,(/(i,i=1,numPointsY-1,2)/))
-                LocmodelObjects(2)%EV =  modelObjects%EV(:,:,:,(/(i,i=2,numPointsY,2)/))
+                !LocmodelObjects(1)%u =  modelObjects%u(:,:,:,(/(i,i=1,numPointsY-1,2)/),:,:)
+                !!write (*,*) 'g'
+                !LocmodelObjects(2)%u =  modelObjects%u(:,:,:,(/(i,i=2,numPointsY,2)/),:,:)
+                !
+                !LocmodelObjects(1)%q =  modelObjects%q(:,:,(/(i,i=1,numPointsY-1,2)/),:,:)
+                !!write (*,*) 'g'
+                !LocmodelObjects(2)%q =  modelObjects%q(:,:,(/(i,i=2,numPointsY,2)/),:,:)
+                !
+                !LocmodelObjects(1)%EV =  modelObjects%EV(:,:,:,(/(i,i=1,numPointsY-1,2)/))
+                !LocmodelObjects(2)%EV =  modelObjects%EV(:,:,:,(/(i,i=2,numPointsY,2)/))
 
             end if
             !write (*,*) 'h'
@@ -942,26 +1202,29 @@
                 unemployed(s) = 2
 #if PROD_SIZE == 5
                 gridy = (/1,2,3,4,5/)
-#elif  PROD_SIZE == 10                   
+#elif  PROD_SIZE == 10
                 gridy = (/1,2,3,4,5,6,7,8,9,10/)
 #endif
                 yval = idxy(s)
+                idxYU = idxy(s)*numpointsL
             else
                 unemployed(s) = 1
                 !everyone start employed so this is ok
                 idxy(s)=minloc(abs(yex(t,s)-grids%ygridextrap(typesim,t,:)), DIM = 1)
+                idxYU = idxy(s)*numpointsL - 1
                 gridy =grids%ygrid(typesim,t,(/(i,i=1,numpointsy-1,2)/))
                 yval = yex(t,s)
                 y(t, s) =  yex(t,s)
             end if
 
             idxaime=minloc(abs(aime(t, s)-grids%aimegrid(typesim,t,:)))
-            do i=1,numPointsL
-                do j=1,numPointsA
-                    policy(:,:,j+(i-1)*numPointsA) = LocmodelObjects(unemployed(s))%policy(a(t, s) ,:,SPA,:,i,j)
-                end do
+
+            !ccp =  reshape(LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),priorpos(t,s),SPA,idxy(s),:,:),(/numPointsL*numPointsA/))
+            ccp = 0.0
+            do i = 1, size(modelObjects%policy(a(t, s),idxaime(1),priorpos(t,s,1),SPA,idxYU)%COO)
+                j= (modelObjects%policy(a(t, s),idxaime(1),priorpos(t,s,1),SPA,idxYU)%COO(i)%col-1)*numpointsL + modelObjects%policy(a(t, s),idxaime(1),priorpos(t,s,1),SPA,idxYU)%COO(i)%row
+                ccp(j) = modelObjects%policy(a(t, s),idxaime(1),priorpos(t,s,1),SPA,idxYU)%COO(i)%val
             end do
-            ccp =  reshape(LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),SPA,idxy(s),:,:),(/numPointsL*numPointsA/))
             check1 = abs(sum(ccp))
             !y(t, s) = yex(t,s)
 
@@ -972,31 +1235,43 @@
                 yint(t, s) = idxy(s)
             end if
 
-            call linearinterp2_vec(grids%aimegrid(typesim,t,:),gridy, numaime, numpointsprod,(numPointsL*numPointsA), aime(t, s), yval, ccpTemp, policy)
-            ccpTemp = ccpTemp/sum(ccpTemp)
-            check2 = abs(sum(ccpTemp))
-            check = abs(sum(ccp - ccpTemp))
-            if (check > checkMax) checkMax = check
-            if (abs(sum(ccp - ccpTemp)) > 0.00001) then
-                write (*,*) "Larege Error", abs(sum(ccp - ccpTemp))
-                !lba1 = grids%agrid(typesim,t + 1, 1);          ! lower bound: assets tomorrow
-                !ev1 = modelobjects%ev(t + 1,typesim,:,:,spa,idxy(1))
-                !!we can only end up here for ages below 80 as for >80 all entries in poll are 0
-                !!this also takes account of uneployment shock as the wage offer they have is 0 so won't work
-                !call solveperiod(params, grids, y(t, s), a(t, s), aime(t, s) ,t, typesim, lba1, ev1, &
-                !    grids%benefit(t),spa,a(t+1, s),c(t, s),l(t,s),v(t  , s))
-            else
-                cumsum = 0.0
-                do i = 1,size(ccp)
-                    cumsum=cumsum+ccp(i)
-                    if (cumsum > grids%logitShock(s,t)) exit
-                end do
-                decision = i
-                l(t,s) = 1- mod(i,2)
-                idxa1= (i-1)/2+1
-                a(t+1, s) = idxa1
-                mat = LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),SPA,idxy(s),:,:)
-                if (modelChoice>2 .and. t < Tretire - 1 +SPA ) then
+            !do i=1,numPointsL
+            !    do j=1,numPointsA
+            !        !policy(:,:,j+(i-1)*numPointsA) = LocmodelObjects(unemployed(s))%policy(a(t, s) ,:,SPA,:,i,j)
+            !    end do
+            !end do
+            !call linearinterp2_vec(grids%aimegrid(typesim,t,:),gridy, numaime, numpointsprod,(numPointsL*numPointsA), aime(t, s), yval, ccpTemp, policy)
+            !ccpTemp = ccpTemp/sum(ccpTemp)
+            !check2 = abs(sum(ccpTemp))
+            !check = abs(sum(ccp - ccpTemp))
+            !if (check > checkMax) checkMax = check
+            !if (abs(sum(ccp - ccpTemp)) > 0.00001) then
+            !    write (*,*) "Larege Error", abs(sum(ccp - ccpTemp))
+            !    !lba1 = grids%agrid(typesim,t + 1, 1);! lower bound: assets tomorrow
+            !    !ev1 = modelobjects%ev(t + 1,typesim,:,:,spa,idxy(1))
+            !    !!we can only end up here for ages below 80 as for >80 all entries in poll are 0
+            !    !!this also takes account of uneployment shock as the wage offer they have is 0 so won't work
+            !    !call solveperiod(params, grids, y(t, s), a(t, s), aime(t, s) ,t, typesim, lba1, ev1, &
+            !    !    grids%benefit(t),spa,a(t+1, s),c(t, s),l(t,s),v(t  , s))
+            !else
+            cumsum = 0.0
+            do i = 1,size(ccp)
+                cumsum=cumsum+ccp(i)
+                if (cumsum > grids%logitShock(s,t)) exit
+            end do
+            decision = i
+            l(t,s) = 1- mod(i,2)
+            idxa1= (i-1)/2+1
+            a(t+1, s) = idxa1
+            !mat = LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),SPA,idxy(s),:,:)
+            !ccp = LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),SPA,idxy(s),:,:),(/numPointsL*numPointsA/))
+            !mat = 0.0
+            !do i = 1, size(LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),priorpos(t,s),SPA,idxy(s))%COO)
+            !    mat(LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),priorpos(t,s),SPA,idxy(s))%COO(i)%row,LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),priorpos(t,s),SPA,idxy(s))%COO(i)%col) &
+            !        = LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),priorpos(t,s),SPA,idxy(s))%COO(i)%val
+            !end do
+            if (modelChoice>2  ) then
+                if (t < Tretire - 1 +SPA ) then
                     !ccp(i)
                     !q = dot_product(LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),numPointsSPA-grids%supportSPA(t)+1:numPointsSPA,idxy(s),l(t, s)+1,a(t+1, s)),grids%posteriorSPA(t,numPointsSPA-grids%supportSPA(t)+1:numPointsSPA))
                     posterior(t,s,:) = 0.0
@@ -1006,10 +1281,16 @@
                     !if (LocmodelObjects(unemployed(s))%q(a(t, s),idxaime(1),idxy(s),l(t, s)+1,a(t+1, s))<0.95) then
                     !    continue
                     !end if
-
-                    do i =numPointsSPA-grids%supportSPA(t)+1,numPointsSPA
-                        ccpSPA(:,i) =  reshape(LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),i,idxy(s),:,:),(/numPointsL*numPointsA/))
+                    ccpSPA = 0.0
+                    do k=numPointsSPA-grids%supportSPA(t)+1,numPointsSPA
+                        do i = 1, size(modelObjects%policy(a(t, s),idxaime(1),priorpos(t,s,1),k,idxYU)%COO)
+                            j= (modelObjects%policy(a(t, s),idxaime(1),priorpos(t,s,1),k,idxYU)%COO(i)%col-1)*numpointsL + modelObjects%policy(a(t, s),idxaime(1),priorpos(t,s,1),k,idxYU)%COO(i)%row
+                            ccpSPA(j,k) = modelObjects%policy(a(t, s),idxaime(1),priorpos(t,s,1),k,idxYU)%COO(i)%val
+                        end do
                     end do
+                    !do i =numPointsSPA-grids%supportSPA(t)+1,numPointsSPA
+                    !    ccpSPA(:,i) =  reshape(LocmodelObjects(unemployed(s))%policy(a(t, s),idxaime(1),i,idxy(s),:,:),(/numPointsL*numPointsA/))
+                    !end do
                     q = dot_product(ccpSPA(decision,:),prior(t,s,:))
 
                     do i =numPointsSPA-grids%supportSPA(t)+1,numPointsSPA
@@ -1026,13 +1307,48 @@
                     if (sum(posterior(t,s,:))>1.01 .or. minval(posterior(t,s,:)) < 0) then
                         write(*,*) "Wrong posterior"
                     end if
+                    !update with law of motion
                     prior(t+1,s,:) = matmul(params%spaTransMat,posterior(t,s,:))
+                    !updaate with shock of new age
+                    if (t+1<Tretire-1+SPA) then
+                        if  ( t+1>=Tretire ) then
+                            prior(t+1,s,1:(t +1 - Tretire + 1)) = 0.0
+                            prior(t+1,s,:) = prior(t+1,s,:)/sum(prior(t+1,s,:))
+                            startSPA = t +1 - Tretire + 1
+                        else
+                            startSPA = 1
+                        end if
+                        call nearestDistLoc(grids,prior(t+1,s,startSPA:numPointsSPA),t,priorPos(t+1,s,:))
+                    else
+                        prior(t+1,s,:) = 0.0
+                        prior(t+1,s,SPA) = 1.0
+                        priorPos(t+1,s,1) = 1
+                    end if
+
+                    !if (t+1>=Tretire ) then
+                    !    startSPA = t +1 - Tretire + 1
+                    !    if  ( t+1<Tretire-1+SPA ) then
+                    !        prior(t+1,s,1:(t +1 - Tretire + 1)) = 0.0
+                    !        prior(t+1,s,:) = prior(t+1,s,:)/sum(prior(t+1,s,:))
+                    !    else if (t+1>=Tretire-1+SPA) then
+                    !        prior(t+1,s,:) = 0.0
+                    !        prior(t+1,s,SPA) = 1.0
+                    !        priorPos(t+1,s,1) = 1
+                    !    end if
+                    !else
+                    !    startSPA = 1
+                    !end if
+                    !call nearestDistLoc(grids,prior(t+1,s,startSPA:numPointsSPA),t,priorPos(t+1,s,:))
+
                     if (t <8) then
                         pos(t,s,:) = MAXLOC(posterior(t,s,:))
                         prio(t,s,:) = MAXLOC(prior(t,s,:))
                     end if
+                else
+                    priorPos(t+1,s,1) = 1
                 end if
             end if
+            !end if
 
             if (l(t,s) .eq. 0) then
                 !if (unemployed(s) == 2) then
@@ -1051,6 +1367,7 @@
             c(t, s) = a(t, s)  + y(t, s) - (a(t+1, s)/(1+params%r))
             !
         end do
+        deallocate(modelObjects%policy)
         !write(*,*) 'Mean inc ', sum(y(t,:))/numsims, 'in ', t
         !error
     end do !t
@@ -1089,92 +1406,90 @@
     !        write (*,*) "*************************************************"
     !    end if
     !end do
+    if (modelChoice>2  ) then
+        !check = 0.0
+        !statesVisited = 0.0
+        !do t=1,Tretire - 2 +SPA
+        !    do s= 1, numsims
+        !        if (real(s,rk)/numsims < params%fracType(1)) then
+        !            typesim = 1
+        !        else if (real(s,rk)/numsims < params%fracType(2)) then
+        !            typesim = 2
+        !        else if (real(s,rk)/numsims < params%fracType(3)) then
+        !            typesim =3
+        !        else
+        !            typesim =4
+        !        end if
+        !        if (statesVisited(t,typesim,a(t, s),aimeInt(t, s), yint(t, s)) == 0) then
+        !            locposteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:) = 0.0
+        !        end if
+        !        statesVisited(t,typesim,a(t, s),aimeInt(t, s), yint(t, s)) = statesVisited(t,typesim,a(t, s),aimeInt(t, s), yint(t, s)) + 1
+        !        locposteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:) = &
+        !            ((statesVisited(t,typesim,a(t, s),aimeInt(t, s), yint(t, s))-1)*locposteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:) + posterior(t,s,:) ) / statesVisited(t,typesim,a(t, s),aimeInt(t, s), yint(t, s))
+        !        !if (typesim == maxVec(2) .AND. a(t, s) == maxvec(3) .and. aimeInt(t, s) == maxvec(4) .and. yint(t, s) == maxvec(5) ) then
+        !        !write (*,*) "*************************************************"
+        !        !write (*,*) posterior(t,s,:)
+        !        !write (*,*) "Error = ", 0.5*sum(abs(posterior(t,s,:)-grids%posteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:)))
+        !        !check = check +  0.5*sum(abs(posterior(t,s,:)-grids%posteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:)))
+        !        !grids%posteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:) = posterior(t,s,:)
+        !        !write (*,*) "*************************************************"
+        !        !end if
+        !    end do
+        !end do
+        !grids%posteriorSPA = weight*locposteriorSPA + (1-weight)*grids%posteriorSPA
+        !check = 0.0
+        !check2 = 0.0
+        !do t=1,Tretire - 2 +SPA
+        !    do s= 1, numsims
+        !        if (real(s,rk)/numsims < params%fracType(1)) then
+        !            typesim = 1
+        !        else if (real(s,rk)/numsims < params%fracType(2)) then
+        !            typesim = 2
+        !        else if (real(s,rk)/numsims < params%fracType(3)) then
+        !            typesim =3
+        !        else
+        !            typesim =4
+        !        end if
+        !        check = check +  0.5*sum(abs(posterior(t,s,:)-grids%posteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:)))
+        !        check2 = max(check2,0.5*sum(abs(posterior(t,s,:)-grids%posteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:))))
+        !        if (check2> 0.01) then
+        !            continue
+        !        end if
+        !    end do
+        !end do
+        !if (present(error)) error = check / sum(statesVisited)
+        !!write(*,*) "Average error", check/statesVisited(maxVec(1),maxVec(2),maxVec(3),maxVec(4),maxVec(5))
+        !!write (*,*) 'no'
+        !if (checkMax > 0.00001) write (*,*), "Larege Error = ", checkMax
+        !write (*,*), "Laregest beliefe error = ", check2
 
-    check = 0.0
-    statesVisited = 0.0
-    do t=1,Tretire - 2 +SPA
-        do s= 1, numsims
-            if (real(s,rk)/numsims < params%fracType(1)) then
-                typesim = 1
-            else if (real(s,rk)/numsims < params%fracType(2)) then
-                typesim = 2
-            else if (real(s,rk)/numsims < params%fracType(3)) then
-                typesim =3
-            else
-                typesim =4
-            end if
-            if (statesVisited(t,typesim,a(t, s),aimeInt(t, s), yint(t, s)) == 0) then
-                locposteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:) = 0.0
-            end if
-            statesVisited(t,typesim,a(t, s),aimeInt(t, s), yint(t, s)) = statesVisited(t,typesim,a(t, s),aimeInt(t, s), yint(t, s)) + 1
-            locposteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:) = &
-                ((statesVisited(t,typesim,a(t, s),aimeInt(t, s), yint(t, s))-1)*locposteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:) + posterior(t,s,:) ) / statesVisited(t,typesim,a(t, s),aimeInt(t, s), yint(t, s))
-            !if (typesim == maxVec(2) .AND. a(t, s) == maxvec(3) .and. aimeInt(t, s) == maxvec(4) .and. yint(t, s) == maxvec(5) ) then
-            !write (*,*) "*************************************************"
-            !write (*,*) posterior(t,s,:)
-            !write (*,*) "Error = ", 0.5*sum(abs(posterior(t,s,:)-grids%posteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:)))
-            !check = check +  0.5*sum(abs(posterior(t,s,:)-grids%posteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:)))
-            !grids%posteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:) = posterior(t,s,:)
-            !write (*,*) "*************************************************"
-            !end if
-        end do
-    end do
-    grids%posteriorSPA = weight*locposteriorSPA + (1-weight)*grids%posteriorSPA
-    check = 0.0
-    check2 = 0.0
-    do t=1,Tretire - 2 +SPA
-        do s= 1, numsims
-            if (real(s,rk)/numsims < params%fracType(1)) then
-                typesim = 1
-            else if (real(s,rk)/numsims < params%fracType(2)) then
-                typesim = 2
-            else if (real(s,rk)/numsims < params%fracType(3)) then
-                typesim =3
-            else
-                typesim =4
-            end if
-            check = check +  0.5*sum(abs(posterior(t,s,:)-grids%posteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:)))
-            check2 = max(check2,0.5*sum(abs(posterior(t,s,:)-grids%posteriorSPA(t,typesim,a(t, s), aimeInt(t, s),  yint(t, s),:))))
-            if (check2> 0.01) then
-                continue
-            end if
-        end do
-    end do
-    if (present(error)) error = check / sum(statesVisited)
-    !write(*,*) "Average error", check/statesVisited(maxVec(1),maxVec(2),maxVec(3),maxVec(4),maxVec(5))
-    !write (*,*) 'no'
-    if (checkMax > 0.00001) write (*,*), "Larege Error = ", checkMax
-    write (*,*), "Laregest beliefe error = ", check2
-
-    if (present(posOut)) posOut = pos
-    if (present(prioOut)) prioOut = prio
-    !write(*,*) 'Mean db ', sum(dbpath)/size(dbpath)
-    !write(*,*) 'Mean sp ', sum(sppath)/size(sppath)
-    !write(*,*) 'Mean inc ', sum(y)/size(y)
-    !write(*,*) 'Mena emp int asset', sum(startinga)/real(numsims,rk)
-    !write(*,*) 'Mena sim int asset', sum(grids%agrid(1,1,a(1,:)))/real(numsims,rk)
-    write (outFile, *), trim(trim(pathDataStore) // "EVType"),typeSim,trim("Period"),t,".txt"
-    write (outFile, *), trim(trim(path) // "posdata"), spa,  ".txt"
-    outfile=ADJUSTL(outfile)
-    write (format_numpeepcols_int,*),'(',numSims
-    format_numpeepcols_int = trim(format_numpeepcols_int) // 'I2)'
-    inquire (iolength=requiredl)  transpose(pos(:,:,1))
-    open (unit=212, file=outFile, status='unknown',recl=requiredl, action='write')
-    write (212,format_numpeepcols_int  ) transpose(pos(:,:,1))
-    close( unit=212)
+        if (present(posOut)) posOut = pos
+        if (present(prioOut)) prioOut = prio
+        !write(*,*) 'Mean db ', sum(dbpath)/size(dbpath)
+        !write(*,*) 'Mean sp ', sum(sppath)/size(sppath)
+        !write(*,*) 'Mean inc ', sum(y)/size(y)
+        !write(*,*) 'Mena emp int asset', sum(startinga)/real(numsims,rk)
+        !write(*,*) 'Mena sim int asset', sum(grids%agrid(1,1,a(1,:)))/real(numsims,rk)
+        write (outFile, *), trim(trim(path) // "posdata"), spa,  ".txt"
+        outfile=ADJUSTL(outfile)
+        write (format_numpeepcols_int,*),'(',numSims
+        format_numpeepcols_int = trim(format_numpeepcols_int) // 'I2)'
+        inquire (iolength=requiredl)  transpose(pos(:,:,1))
+        open (unit=212, file=outFile, status='unknown',recl=requiredl, action='write')
+        write (212,format_numpeepcols_int  ) transpose(pos(:,:,1))
+        close( unit=212)
 
 
-    write (outFile, *), trim(trim(path) // "pridata.txt")
-    outfile=ADJUSTL(outfile)
-    write (format_numpeepcols_int,*),'(',numSims
-    format_numpeepcols_int = trim(format_numpeepcols_int) // 'I2)'
-    inquire (iolength=requiredl)  transpose(prio(:,:,1))
-    open (unit=212, file=outFile, status='unknown',recl=requiredl, action='write')
-    write (212,format_numpeepcols_int  ) transpose(prio(:,:,1))
-    close( unit=212)
+        write (outFile, *), trim(trim(path) // "pridata.txt")
+        outfile=ADJUSTL(outfile)
+        write (format_numpeepcols_int,*),'(',numSims
+        format_numpeepcols_int = trim(format_numpeepcols_int) // 'I2)'
+        inquire (iolength=requiredl)  transpose(prio(:,:,1))
+        open (unit=212, file=outFile, status='unknown',recl=requiredl, action='write')
+        write (212,format_numpeepcols_int  ) transpose(prio(:,:,1))
+        close( unit=212)
+    end if
 
-    !write (*,*) "Starting A ", sum(startinga)/size(startinga)
-    !write (*,*) "Sim Start A ", sum(grids%Agrid(1,1,a(1,:)))/real(numSims,rk)
     end subroutine
     ! ---------------------------------------------------------------------------------------------------------!
     !!truncate obsrvtion
@@ -1289,7 +1604,7 @@
     if (present(overridePF)) delPF = overridePF
     if (present(overrideRecal)) reclloc = overrideRecal
 
-    if (reclloc) call solveValueFunction( params, grids, .false., .false. )
+    if (reclloc) call solveValueFunction( params, grids, .false., .false.  )
     meanL = 0.0
     meanA = 0.0
     locL = 0.0
@@ -1902,7 +2217,7 @@
     implicit none
 
     !input
-    real(kind=rk), intent(in) ::  EV1(:,:)
+    real(kind=sp), intent(in) ::  EV1(:,:)
     type (structparamstype), intent(in) :: params
     type (gridsType), intent(in) :: grids
     integer, intent(in) :: ixt,ixType,ixa,ixAIME,ixy, spa
@@ -1938,32 +2253,40 @@
     !!solve period
     !! when RI is imporant
     ! ---------------------------------------------------------------------------------------------------------!
-    subroutine solvePeriodRI(params, grids, ixy, ixA, ixAIME ,ixt,ixType,spa,  EV1, ccpOut, v, q, uConst)
+    subroutine solvePeriodRI(params, grids, ixy, ixA, ixAIME ,ixt,ixType,spa,  EV1, policy, v, q, uConst)
     implicit none
 
     !input
-    real(kind=rk), intent(in) ::  EV1(:,:,:)
+    real(kind=sp), intent(in) ::  EV1(:,:,:,:)
     type (structparamstype), intent(in) :: params
     type (gridsType), intent(in) :: grids
     integer, intent(in) :: ixt,ixType,ixa,ixAIME,ixy, spa
 
     !!output
-    real(kind=rk), intent(out) :: ccpOut(:,:,:), v(:), q(:,:), uConst(:,:,:)
+    real(kind=rk), intent(out) ::q(:,:), uConst(:,:,:)
+    real(kind=sp), intent(out) ::  v(:,:)
+    type(policyType) :: policy(:,:)
+    !type(policyType), allocatable:: policy(:,:)
+    !real(kind=sp) :: ccpOut(:,:,:,:)
     !local
     !integer, parameter :: hp = selected_real_kind(16)
-    integer :: ixl,  ixA1, i, j, dim, dimD ,K, labourChoices, offset, maxmaxA, sizeBuffer !A1, testInt
+    integer :: ixl,  ixA1, i, j, dim, dimD ,K, labourChoices, offset, maxmaxA, sizeBuffer, ixpost,tempInt, minSPA,maxlocx(1) !A1, testInt
     integer, allocatable :: maxA(:)
-    real(kind=rk) :: Y,  ubA1, A,AIME, EVloc(numAIME), checkSave(grids%supportSPA(ixt)), checkOther(grids%supportSPA(ixt)) !cons, va1, vb1, check
-    real(kind=rk) :: scale !, toputil
-    real(kind=rk), allocatable :: values(:), ccpMat(:,:,:) !, eye(:,:)
-    real(kind=rk), allocatable :: const(:,:,:), GrossUtil(:,:)
-    real(kind=rk), allocatable  ::  parameters(:), ccp(:), test(:), utilVec(:), buffer(:,:)
-    integer, save :: saveDim(2,numPointsL), unemp, locl, locA1, morethan(11) = 0 !,choices = 0!, div, lastixT = 0
+    real(kind=rk) ::  ubA1, A, EVloc(numAIME,grids%beliefStore(ixt+1)%sizepost) ,checkSave(grids%supportSPA(ixt)), checkOther(grids%supportSPA(ixt)) !cons, va1, vb1, check
+    real(kind=rk) :: scale, workspace(grids%supportSPA(ixt)), probone, va1, uflow, errorOuter, tesf(2) ! EVloc2(numpointsA,numAIME,grids%beliefStore(ixt+1)%sizepost)  !, toputil
+    real(kind=rk), allocatable :: values(:), ccpMat(:,:,:), y(:), xcopy(:) !, eye(:,:)
+    real(kind=rk), allocatable :: const(:,:,:), GrossUtil(:,:), EVTemp(:,:,:)
+    real(kind=rk), allocatable  ::  parameters(:), ccp(:), test(:), utilVec(:), buffer(:,:), ratio(:,:)
+    integer, save :: saveDim(2,numPointsL), unemp, locl, locA1, inerror = 0 !, morethan(11) = 0 !,choices = 0!, div, lastixT = 0
     integer, allocatable :: rang(:), bufferInd(:)
     !real(kind=rk), allocatable, save :: locinitialGuessRI(:,:)
-    logical :: converged !, unchanged
+    !logical :: converged !, unchanged
     !character (len=2000) :: text(2)
-
+    real(kind=rk), allocatable :: newPost(:), AIME(:), stat(:)
+    real(kind=rk), allocatable :: qtilde(:), qdash(:), qdd(:), vavec(:,:,:)
+    real(kind=rk) :: prior(numpointsspa), relx, errornew, cons, util, vb1, tol
+    integer :: counter
+    logical, parameter :: checks = .false.
     !temp
     !real(kind=rk), allocatable :: tempC1(:,:), tempC2(:,:)
     real(kind=rk) ::  lowestUtil, psum, temp !diff,
@@ -1971,46 +2294,59 @@
     !REAL(kind=rk) :: error
     !LOGICAL :: logcheck
     integer, allocatable          :: kwa(:)
-    integer                       :: n, me, m, np, mnn2, maxit, maxfun, iprint, &
-        maxnm, iout, mode, ifail, lwa, lkwa, lactiv
+    integer                       :: n, me, m, np, mnn2, maxit, maxfun, iprint, relStates, &
+        maxnm, iout, mode, ifail, lwa, lkwa, lactiv, relStatesVec(grids%supportSPA(ixt)), knn
     double precision, allocatable :: x(:), g(:), df(:), dg(:,:), u(:), &
         xl(:), xu(:), c(:,:),  wa(:), d(:), payoff(:,:), denom(:)
     double precision                 f(1), acc, accqp, stpmin, rho
     logical, allocatable          :: active(:)
     logical                       :: lql
     external                      :: ql
-    integer :: iter !meq, ierr, nact,
+    integer :: iter, rangeInt(grids%supportSPA(ixt)) !meq, ierr, nact,
 
     ixa1 = 0
+    !allocate(qtilde(numPointsL,numPointsA))
+    if (ixt < TendRI-2) allocate(newPost(grids%beliefStore(ixt+1)%sizePost))
+
     lowestUtil = 0.0
+
     !If suffered unemployment shock then can't choose to work
     labourChoices=mod(ixy,2)*numPointsL+(1-mod(ixy,2))*1
+
     allocate(maxA(labourChoices), const(labourChoices,numPointsA,grids%supportSPA(ixt)))
     maxA(1) = numPointsA !default to all asset level possible
-    !if (ixy == 4 .AND. ixt ==14 .AND. ixAIME == 2) then
-    !    write(*,*) 'stop'
-    !end if
-    !if ( ixy == 4 .and. ixAIME == 2 .and. ixt==8 .and. ixType == 4 .and. ixa == 4) then
-    if ( ixy == 1 .and. ixAIME == 1 .and. ixt==9 .and. ixType == 4 .and. ixa == 3) then
-        continue
-    end if
+
+    !allocate(qtilde(labourChoices, numpointsA))
+    !qtilde = 1/real(labourChoices*numpointsA,rk)
+
+    allocate(y(labourChoices),AIME(labourChoices))
+
+
+    !do i=1,numpointsA
+    !    do j=1,numAIME
+    !        do k = 1, grids%beliefStore(ixt+1)%sizepost
+    !            EVTemp(i,j,k) = dot_product(ev1(i,j,k,:),prior)
+    !        end do
+    !    end do
+    !end do
+
     do ixL = 0,(labourChoices-1),1           ! points of income choice
         ! Value of income and information for optimisation
         if (ixa1 > numPointsA) maxA(ixl) = numPointsA
         A    = grids%Agrid(ixType,ixt, ixA)            ! assets today
 
-        Y    = grids%Ygrid(ixType,ixt, ixY)
-        Y    = ixL*Y
+        Y(ixL+1)    = grids%Ygrid(ixType,ixt, ixY)
+        Y(ixL+1)    = ixL*Y(ixL+1)
 
-        AIME = grids%AIMEgrid(ixType,ixt,ixAIME)
+        AIME(ixL+1) = grids%AIMEgrid(ixType,ixt,ixAIME)
 
-        call nextAIME(grids,params,ixt,ixType,ixl,y,AIME)
+        call nextAIME(grids,params,ixt,ixType,ixl,Y(ixL+1),AIME(ixL+1))
 
-        Y    = ixL*Y+ abs(mod(ixy,2)==0 )*grids%benefit(ixt)
+        Y(ixL+1)    = ixL*Y(ixL+1)+ abs(mod(ixy,2)==0 )*grids%benefit(ixt)
 
-        call gross2net(params,grids,Y,ixt,ixl,ixType,AIME,spa)
+        call gross2net(params,grids,Y(ixL+1),ixt,ixl,ixType,AIME(ixL+1),spa)
 
-        ubA1 = (A + Y - params%minCons)*(1+params%r);    ! upper bound: assets tomorrow
+        ubA1 = (A + Y(ixL+1) - params%minCons)*(1+params%r);    ! upper bound: assets tomorrow
         do ixA1 = 1, numPointsA
             if (grids%Agrid(ixType,ixt+1, ixA1) > ubA1) then
                 const(ixl+1,ixa1:numPointsA,:) = -huge(const(ixl+1,ixa1,1))
@@ -2019,19 +2355,24 @@
                 exit
             end if
 
-            do i = 1, grids%supportSPA(ixt)-1
-                EVloc =  (1-params%p)*EV1(ixA1,:,numPointsSPA-grids%supportSPA(ixt)+i)+params%p*EV1(ixA1,:,numPointsSPA-grids%supportSPA(ixt)+i+1)
-                const(ixl+1,ixa1,i) = objectivefunc(params, grids,grids%Agrid(ixType,ixt+1, ixA1), A, Y,ixL,ixt,ixType, AIME,EVloc)
-                !if (const(ixl+1,ixa1,i) <lowestUtil) lowestUtil = const(ixl+1,ixa1,i)
-                uConst(numPointsSPA-grids%supportSPA(ixt)+i,ixl+1,ixa1) = const(ixl+1,ixa1,i)
-            end do
-            EVloc =  EV1(ixA1,:,numPointsSPA)
-            const(ixl+1,ixa1,i) = objectivefunc(params, grids,grids%Agrid(ixType,ixt+1, ixA1), A, Y,ixL,ixt,ixType, AIME,EVloc)
-            uConst(numPointsSPA-grids%supportSPA(ixt)+i,ixl+1,ixa1) = const(ixl+1,ixa1,i)
-            !if (const(ixl+1,ixa1,i) < lowestUtil) lowestUtil = const(ixl+1,ixa1,i)
+            if (grids%beliefStore(ixt+1)%sizepost > 1 ) then
+                !const = 0.0
+            else
+                do i = 1, grids%supportSPA(ixt)-1
+                    EVloc =  (1-params%p)*EV1(ixA1,:,:,numPointsSPA-grids%supportSPA(ixt)+i)+params%p*EV1(ixA1,:,:,numPointsSPA-grids%supportSPA(ixt)+i+1)
+                    const(ixl+1,ixa1,i) = objectivefunc(params, grids,grids%Agrid(ixType,ixt+1, ixA1), A, Y(ixL+1),ixL,ixt,ixType, AIME(ixL+1),EVloc(:,1))
+                    !if (const(ixl+1,ixa1,i) <lowestUtil) lowestUtil = const(ixl+1,ixa1,i)
+                    uConst(numPointsSPA-grids%supportSPA(ixt)+i,ixl+1,ixa1) = const(ixl+1,ixa1,i)
+                end do
+                EVloc(:,1) =  EV1(ixA1,:,1,numPointsSPA)
+                const(ixl+1,ixa1,i) = objectivefunc(params, grids,grids%Agrid(ixType,ixt+1, ixA1), A, Y(ixL+1),ixL,ixt,ixType, AIME(ixL+1),EVloc(:,1))
+                !uConst(numPointsSPA-grids%supportSPA(ixt)+i,ixl+1,ixa1) = const(ixl+1,ixa1,i)
+            end if
         end do
 
     end do
+
+
     if (ixa1 > numPointsA) maxA(labourChoices) = numPointsA
     maxmaxA = maxval(maxA)
 
@@ -2047,419 +2388,853 @@
     !    diff = maxval(tempC1) - minval(tempC1)
     !end if
 
-    scale = maxval(const)
-    !temp = log(1.0d300)
-    scale= scale!-temp
-    const = const-scale
-
-    const=exp(const)
-
 
     dimD = sum(maxA)!labourChoices*(ixa1-1)
     dim = grids%supportSPA(ixt)*dimD !*labourChoices*(ixa1-1)
     allocate(values(dim+1),parameters(dim),ccp(dim),ccpMat(grids%supportSPA(ixt),labourChoices,maxmaxA), buffer(dimD,grids%supportSPA(ixt)),bufferInd(dimD), GrossUtil(dimD,grids%supportSPA(ixt)),test(dimD),utilVec(dim),rang(dimd))
+    allocate(EVTemp(dimD,grids%beliefStore(ixt+1)%sizepost,numpointsspa),qtilde(dimd),qdash(dimD),qdd(dimD),stat(dimD))
+    allocate(vavec(dimD,grids%supportSPA(ixt),grids%beliefStore(ixt+1)%sizepost))
+    EVTemp = 0.0
     unemp = mod(ixy-1,2)+1
+    qtilde = 1/real(dimD)
 
-    locl =1
-    locA1 = 0
-    do i=1,dimD
-        locA1 = locA1 + 1
-        if (locA1 > maxa(locl)) then
-            locl = locl+1
-            locA1=1
-        end if
-        do j = 1,grids%supportSPA(ixt)
-            GrossUtil(i,j) = const(locl,locA1,j)
-        end do
-    end do
-
-    !if ( ixy == 1 .and. ixAIME == 2 .and. ixt==16 .and. ixType == 1 .and. ixa == 2) then
-    !    continue
-    !end if
-    call skylineBNL(GrossUtil,dimD,grids%supportSPA(ixt),buffer,bufferInd,sizeBuffer )
-    if (minval(buffer(1:sizeBuffer,:))< 0.0) then
-        write (*,*) 'break'
-    end if
-    morethan(11) = morethan(11) + 1
-    do i=1,10
-        if (sizebuffer > i ) then
-            morethan(i) = morethan(i) + 1
-        else
-            exit
-        end if
-    end do
-    !if (sizebuffer >= 3 ) then
-
-    !end if
-    !if (sizebuffer > choices) then
-    !    choices = sizebuffer
-    !    !write (*,*) 'num chouices', choices
-    !    !write (*,*) 'dim reduc ' , real(choices,rk)/real(dimD,rk)
-    !end if
-    !return
-
-    if (ixt==9) then
-        if (ixa == 20) then
-            if (ixAIME == 2) then
-                if (ixy == 3) then
-                    iout = 6
-                end if
+    if (grids%beliefStore(ixt+1)%sizepost > 1 ) then
+        locl =1
+        locA1 = 0
+        do j=1,dimD
+            locA1 = locA1 + 1
+            if (locA1 > maxa(locl)) then
+                locl = locl+1
+                locA1=1
             end if
-        end if
-    end if
-    if (sizebuffer> 1) then
-        if (sizebuffer>grids%supportSPA(ixt)) then
-            !write(*,*) "undefined!"
-        end if
-        !   Set some constants and initial values
+            cons = A  + Y(locl) - (grids%Agrid(ixType,ixt+1, locA1))/(1+params%r)
 
-        iout   = 6
-        acc    = 1.0d-14 !1.0d-9
-        if (params%lambda < 1.0D-11 ) acc = 0.01
-        accqp  = 0 !1.0d-14
-        stpmin = 1.0d-5
-        maxit  = 100
-        if (params%lambda < 1.0D-11 ) maxit = 1000 
-        maxfun = 20
-        if (params%lambda < 1.0D-9 ) maxfun = 50
-        maxnm  = 10
-        rho    = 0
-        lql    = .true.
-        iprint = 0
-        n      = sizebuffer
-        np     = 1
-        m      = 1
-        me     = 1
-        mnn2   = m + n + n + 2
-        mode   = 0
-        ifail  = 0
-        lwa    = 3*(n+1)*(n+1)/2 + 33*(n+1) + 9*m + 150
-        lkwa   = n + 30
-        lactiv = 2*m + 10
+            VB1 = params%thetab*((grids%Agrid(ixType,ixt+1, locA1)+params%K)**(1-params%gamma))/(1-params%gamma)
 
-        !   Allocate arrays
+            util = utility(params,cons,locl-1)
+            stat(j) = util +  params%beta * (grids%mortal(ixt+1)*VB1)
 
-        allocate ( x(n+1), xl(n+1), xu(n+1), df(n+1), g(m), &
-            dg(m,n+1), u(mnn2), c(n+1,n+1), d(n+1), &
-            wa(lwa), kwa(lkwa), active(lactiv), payoff(sizebuffer,grids%supportSPA(ixt)), denom(grids%supportSPA(ixt)))
-
-
-        !   Set starting values
-
-        xl = 0.0
-        x  = 0.5
-        xu = 1.0
-
-        do i=1, sizebuffer
-            do j =1,  grids%supportSPA(ixt)
-                payoff(i,j) = buffer(i,j)
-                if (payoff(i,j) <= 0.0) then
-                    payoff(i,j) = tiny(payoff)
-                end if
+            do i =1 , numpointsspa
+                call linearinterp1_vec(grids%AIMEgrid(ixType,ixt + 1, :), transpose(EV1(locA1,:,:,i)), numAIME, grids%beliefStore(ixt+1)%sizepost, AIME(locl), EVTemp(j,:,i), 1, 1)
             end do
-        end do
 
-        denom = 0.0
-        do j =1,  grids%supportSPA(ixt)
-            do i=1, sizebuffer
-                denom(j) = denom(j) + x(i)*payoff(i,j)
+            do i=1,grids%supportSPA(ixt) - 1
+                vavec(j,i,:) =  (1-params%p)*EVTemp(j,:,numPointsSPA-grids%supportSPA(ixt)+i)+params%p*EVTemp(j,:,numPointsSPA-grids%supportSPA(ixt)+1+1)
             end do
+            vavec(j,grids%supportSPA(ixt),:) =  EVTemp(j,:,grids%supportSPA(ixt))
         end do
-        f = 0
-        do j =1,  grids%supportSPA(ixt)
-            f(1) = f(1) - grids%posteriorSPA(ixt,ixtype,ixa, ixAIME,  ixy,numPointsSPA-grids%supportSPA(ixt)+j)*log(denom(j))
-        end do
-        g(1) =  1.0- sum(x(1:n))
 
-        !============================================================
-        !        if (ifail.EQ.-1) goto 4
-        !2       continue
-        !============================================================
-        !   This block computes all derivative values.
+        locl =1
+        !locA1 = 0
+        !do i=1,dimD
+        !    locA1 = locA1 + 1
+        !    if (locA1 > maxa(locl)) then
+        !        locl = locl+1
+        !        locA1=1
+        !    end if
+        !    do j=1,grids%supportSPA(ixt) - 1
+        !        vavec(i,j,:) =  (1-params%p)*EVTemp(locA1,:,numPointsSPA-grids%supportSPA(ixt)+j)+params%p*EVTemp(locA1,:,numPointsSPA-grids%supportSPA(ixt)+j+1)
+        !    end do
+        !    vavec(i,grids%supportSPA(ixt),:) =  EVTemp(locA1,:,grids%supportSPA(ixt))
         !
-        df = 0
-        do i=1, n
-            do j =1,  grids%supportSPA(ixt)
-                df(i)   = df(i)-((grids%posteriorSPA(ixt,ixtype,ixa, ixAIME,  ixy,numPointsSPA-grids%supportSPA(ixt)+j)*payoff(i,j))/(denom(j)))
+        !end do
+    else
+        scale = maxval(const)
+        !temp = log(1.0d50)
+        scale= scale !-temp
+        const = const-scale
+
+        const=exp(const)
+        locl =1
+        locA1 = 0
+        do i=1,dimD
+            locA1 = locA1 + 1
+            if (locA1 > maxa(locl)) then
+                locl = locl+1
+                locA1=1
+            end if
+            do j = 1,grids%supportSPA(ixt)
+                GrossUtil(i,j) = const(locl,locA1,j)
             end do
         end do
-        dg =  -1
-        ifail = -1
-        iter = 0
-        do while (ifail  < 0 )
-            if (iter==0)ifail= 0
-            iter = iter + 1
+    end if
 
-            if ( ixy == 7 .and. ixAIME == 3 .and. ixt==14 .and. ixType == 1 .and. ixa == 1) then
-                continue
-                iprint = 4 
+    !allocate(policy(dimVal(ixt,3),grids%supportSPA(ixt)))
+    do ixPost = 1, dimVal(ixt,3)
+        errorOuter = 1.0
+        prior = 0.0
+        j= numPointsSPA-grids%supportSPA(ixt)+1
+        do k =1, numPointsSPA - 1 + numPointsPost - max((ixt-Tretire+1),0)
+            if (grids%beliefStore(ixt)%storePost(ixpost,k) <= 0.0) j = j +1
+            !write(*,*) grids%beliefStore(ixt)%storePost(j,k)
+            prior(j) = prior(j) + grids%beliefStore(ixt)%storePost(ixpost,k)
+        end do
+        !!knows law of motion
+        !prior(numPointsSPA) = prior(numPointsSPA-1)*(params%p) + prior(numPointsSPA)
+        !do j=numPointsSPA -1, 2,-1
+        !    prior(j) = prior(j-1)*(params%p) + prior(j)*(1-params%p)
+        !end do
+        !prior(1)  = (1-params%p)* prior(1)
+        if (checks) then
+            if (sum(prior) >1.0001 .or. sum(prior) <0.999) then
+                write (*,*) "Prior wrong!"
             end if
-            call nlpqlp (    np,      m,     me,      m,      n, &
-                n+1,   mnn2,      x,      f,      g, &
-                df,     dg,      u,     xl,     xu, &
-                c,      d,    acc,  accqp, stpmin, &
-                maxfun,  maxit,  maxnm,    rho, iprint, &
-                mode,   iout,  ifail,     wa,    lwa, &
-                kwa,   lkwa, active, lactiv,    lql, &
-                ql)
+        end if
+        counter = 0
+        relx = 0.0
+        tol = 1D-1
+        knn = 2
+        do while (errorOuter > tol )
+            if (ALLOCATED(ratio)) deallocate(ratio)
+            if (allocated(x)) deallocate ( x)
+            if (allocated(xl)) deallocate ( xl)
+            if (allocated(xu)) deallocate (  xu)
+            if (allocated(df)) deallocate (  df)
+            if (allocated(g)) deallocate ( g)
+            if (allocated(dg)) deallocate (  dg)
+            if (allocated(u)) deallocate ( u)
+            if (allocated(c)) deallocate ( c)
+            if (allocated(d)) deallocate (  D)
+            if (allocated(wa)) deallocate (  WA)
+            if (allocated(kwa)) deallocate (KWA)
+            if (allocated(active)) deallocate ( active)
+            if (allocated(payoff)) deallocate (payoff)
+            if (allocated(denom)) deallocate (denom)
+            !do k=1, grids%supportSPA(ixt)
+            !    if (allocated(policy(ixpost,k)%coo)) deallocate(policy(ixpost,k)%coo)
+            !end do
 
-            if (ifail>0) then
-                write(*,*) "failed"
+            if (grids%beliefStore(ixt+1)%sizepost > 1 ) then
+
+                GrossUtil = -1.0
+                !if (any(abs(vavec(:,1,1) - vavec(:,3,1))>10E-10)) then
+                !    write (*,*) maxval(abs(vavec(:,1,1) - vavec(:,3,1)))
+                !end if
+                call valueFncIter(params, grids,vavec,qtilde,prior,grids%beliefStore(ixt+1)%sizepost,dimD,grids%supportSPA(ixt+1),ixt,y,maxA,A,ixType,counter, stat, knn, GrossUtil)
+                !if (any(abs(grossutil(:,1) - grossutil(:,3))>10E-10)) then
+                !    write (*,*) maxval(abs(grossutil(:,1) - grossutil(:,3)))
+                !end if
+                scale = maxval(GrossUtil)
+                GrossUtil=exp(GrossUtil-scale)
             end if
 
-            if (ifail==-1) then
+
+
+            !rangeINT = 0
+            !i = 0
+            !do k=1,grids%supportSPA(ixt)
+            !    if (prior(numPointsSPA-grids%supportSPA(ixt)+k)>0.0000001) then
+            !        rangeInt(i+1) = k !numPointsSPA-grids%supportSPA(ixt)+k
+            !        i = i+1
+            !    end if
+            !end do
+            !
+            !call skylineBNL(GrossUtil(:,(/(rangeInt(k),k=1,i)/)),dimD,i,buffer,bufferInd,sizeBuffer )
+            !if (minval(buffer(1:sizeBuffer,1:I))< 0.0) then
+            !    write (*,*) 'break'
+            !end if
+            call skylineBNL(GrossUtil,dimD,grids%supportSPA(ixt),buffer,bufferInd,sizeBuffer )
+            if (minval(buffer(1:sizeBuffer,:))< 0.0) then
+                write (*,*) 'break'
+            end if
+
+            !morethan(11) = morethan(11) + 1
+            !do i=1,10
+            !    if (sizebuffer > i ) then
+            !        morethan(i) = morethan(i) + 1
+            !    else
+            !        exit
+            !    end if
+            !end do
+
+
+            if (sizebuffer> 1) then
+                !allocate(ratio(sizebuffer,sizebuffer))
+                do i=1, sizebuffer
+                    do j =1,  grids%supportSPA(ixt)
+                        if (buffer(i,j) <= 0.0) then
+                            buffer(i,j) = tiny(buffer)
+                        end if
+                    end do
+                end do
+
+                !do i=1, sizebuffer
+                !    do j =1, sizebuffer
+                !        workspace = buffer(j,:) / buffer(i,:)
+                !        ratio(i,j) = dot_product(workspace,prior(numpointsspa-grids%supportspa(ixt)+1:numpointsspa))
+                !    end do
+                !    if (maxval(ratio(i,:)) <= 1) then
+                !        !write(*,*) 'ratio used'
+                !        sizebuffer = 1
+                !        bufferind(1) = 1
+                !        buffer(1,:) = buffer(i,:)
+                !        exit
+                !    end if
+                !end do
+                if (sizebuffer> 1) then
+                    relStates = grids%supportSPA(ixt)
+                    do i=1, grids%supportSPA(ixt)
+                        temp = minval(buffer(1:sizebuffer,i))/maxval(buffer(1:sizebuffer,i))
+                        if ( temp >= 1.0 ) then
+                            relStates = relStates - 1
+                            !else if (prior(numPointsSPA-grids%supportSPA(ixt)+i)<= 0.0000001) then
+                            !    relStates = relStates - 1
+                        else
+                            relStatesVec(i-(grids%supportSPA(ixt)-relStates)) = i
+                        end if
+                    end do
+                end if
+            end if
+
+
+            if (sizebuffer> 1) then
+                !if (sizebuffer>grids%supportSPA(ixt)) then
+                !    !write(*,*) "undefined!"
+                !end if
+                !   Set some constants and initial values
+                !write(*,*) 'Sovling!'
+
+                iout   = 6
+                acc    = 1.0d-14 !1.0d-9
+                if (params%lambda < 1.0D-11  ) acc = 0.01
+                if (counter > 100) acc    = 1.0d-16
+                accqp  = 0 !1.0d-14
+                stpmin = 1.0d-5
+                maxit  = 100
+                if (params%lambda < 1.0D-11  ) maxit = 1000
+                maxfun = 20
+                if (params%lambda < 1.0D-9 ) maxfun = 50
+                maxnm  = 10
+                rho    = 0
+                lql    = .true.
+                iprint = 0
+                !if (counter > 1000 ) iprint = 4
+                n      = sizebuffer
+                np     = 1
+                m      = 1
+                me     = 1
+                mnn2   = m + n + n + 2
+                mode   = 0
+                ifail  = 0
+                lwa    = 3*(n+1)*(n+1)/2 + 33*(n+1) + 9*m + 150
+                lkwa   = n + 30
+                lactiv = 2*m + 10
+
+                !   Allocate arrays
+
+                allocate ( x(n+1), xl(n+1), xu(n+1), df(n+1), g(m), &
+                    dg(m,n+1), u(mnn2), c(n+1,n+1), d(n+1), &
+                    wa(lwa), kwa(lkwa), active(lactiv), payoff(sizebuffer,relStates), denom(relStates))
+
+
+                !   Set starting values
+
+                xl = 0.0
+                x  = 1/real(sizebuffer,rk) !0.5
+                xu = 1.0
+
+                do i=1, sizebuffer
+                    do j =1, relStates
+                        payoff(i,j) = buffer(i,relStatesVec(j))
+                        !if (payoff(i,j) <= 0.0) then
+                        !    payoff(i,j) = tiny(payoff)
+                        !end if
+                    end do
+                end do
+
                 denom = 0.0
-                do j =1,  grids%supportSPA(ixt)
+                do j =1, relStates
                     do i=1, sizebuffer
                         denom(j) = denom(j) + x(i)*payoff(i,j)
                     end do
                 end do
                 f = 0
-                do j =1,  grids%supportSPA(ixt)
-                    f(1) = f(1) - grids%posteriorSPA(ixt,ixtype,ixa, ixAIME,  ixy,numPointsSPA-grids%supportSPA(ixt)+j)*log(denom(j))
+                do j =1,  relStates
+                    f(1) = f(1) - prior(numPointsSPA-grids%supportSPA(ixt)+relStatesVec(j))*log(denom(j))
                 end do
                 g(1) =  1.0- sum(x(1:n))
-            elseif (ifail==-2) then
+
+                !============================================================
+                !        if (ifail.EQ.-1) goto 4
+                !2       continue
+                !============================================================
+                !   This block computes all derivative values.
+                !
                 df = 0
                 do i=1, n
-                    do j =1,  grids%supportSPA(ixt)
-                        df(i)   = df(i)-((grids%posteriorSPA(ixt,ixtype,ixa, ixAIME,  ixy,numPointsSPA-grids%supportSPA(ixt)+j)*payoff(i,j))/(denom(j)))
+                    do j =1, relStates
+                        df(i)   = df(i)-((prior(numPointsSPA-grids%supportSPA(ixt)+relStatesVec(j))*payoff(i,j))/(denom(j)))
                     end do
                 end do
                 dg =  -1
+                ifail = -1
+                iter = 0
+                do while (ifail  < 0 )
+                    if (iter==0)ifail= 0
+                    iter = iter + 1
+                    if (iter > 10) then
+                        !write (*,*) 'break'
+                    end if
+                    !
+                    !if ( ixy == 7 .and. ixAIME == 3 .and. ixt==14 .and. ixType == 1 .and. ixa == 1) then
+                    !    continue
+                    !    iprint = 4
+                    !end if
+                    call nlpqlp (    np,      m,     me,      m,      n, &
+                        n+1,   mnn2,      x,      f,      g, &
+                        df,     dg,      u,     xl,     xu, &
+                        c,      d,    acc,  accqp, stpmin, &
+                        maxfun,  maxit,  maxnm,    rho, iprint, &
+                        mode,   iout,  ifail,     wa,    lwa, &
+                        kwa,   lkwa, active, lactiv,    lql, &
+                        ql)
+
+                    if (ifail>0) then
+                        inerror = inerror + 1
+                        !write(*,*) "failed"
+                        !do i=1, relstates
+                        !    !write(*,*) 'for action', i
+                        !    !write(*,*) 'highest payoff in state', maxloc(payoff(i,:))
+                        !    write(*,*) minval(payoff(:,i))/maxval(payoff(:,i))
+                        !end do
+                        !stop
+                    end if
+
+                    if (ifail==-1) then
+                        denom = 0.0
+                        do j =1,  relstates !grids%supportSPA(ixt)
+                            do i=1, sizebuffer
+                                denom(j) = denom(j) + x(i)*payoff(i,j)
+                            end do
+                        end do
+                        f = 0
+                        do j =1,  relstates !grids%supportSPA(ixt)
+                            f(1) = f(1) - prior(numPointsSPA-grids%supportSPA(ixt)+relStatesVec(j))*log(denom(j))
+                        end do
+                        g(1) =  1.0- sum(x(1:n))
+                    elseif (ifail==-2) then
+                        df = 0
+                        do i=1, n
+                            do j =1, relstates !  grids%supportSPA(ixt)
+                                df(i)   = df(i)-((prior(numPointsSPA-grids%supportSPA(ixt)+relStatesVec(j))*payoff(i,j))/(denom(j)))
+                            end do
+                        end do
+                        dg =  -1
+                    end if
+                end do
+
+
+                !do k=1, grids%supportSPA(ixt)
+                !    allocate(policy(ixpost,k)%coo(sizebuffer))
+                !end do
+                !do j =1,  grids%supportSPA(ixt)
+                !    psum = 0.0
+                !    do i=1,sizebuffer
+                !        if (maxa(1)  - bufferInd(i) < 0 ) then
+                !            locl =2
+                !            locA1 = bufferInd(i) -  maxa(1)
+                !        else
+                !            locl =1
+                !            locA1 = bufferInd(i)
+                !        end if
+                !        policy(ixpost,j)%coo(i)%row = locl
+                !        policy(ixpost,j)%coo(i)%col = locA1
+                !        policy(ixpost,j)%coo(i)%val = x(i)* buffer(i,j)
+                !        psum = psum + policy(ixpost,j)%coo(i)%val
+                !    end do
+                !    policy(ixpost,j)%coo(:)%val = policy(ixpost,j)%coo(:)%val / psum
+                !end do
+
+                q= 0.0
+                qdash = 0.0
+                j = 1
+                locl =1
+                locA1 = 0
+                do i=1,dimD
+                    locA1 = locA1 + 1
+                    if (locA1 > maxa(locl)) then
+                        locl = locl+1
+                        locA1=1
+                    end if
+                    if (i==bufferInd(j)) then
+                        q(locl,locA1) = x(j)
+                        qdash(i) =  x(j)
+                        j = j + 1
+                    end if
+                end do
+            else
+                !ccp = 0.0
+                !ccpout = 0.0
+                !!tempInt = 1
+                !do k=1, grids%supportSPA(ixt)
+                !    allocate(policy(ixpost,k)%coo(1))
+                !    !if (size(policy(ixpost,k)%coo) /=1 ) then
+                !    !    write (*,*) "break!"
+                !    !end if
+                !end do
+                !ccp((bufferInd(1)-1)*grids%supportSPA(ixt)+1:bufferInd(1)*grids%supportSPA(ixt)) = 1.0
+
+                !Get defaults actiosn
+                q= 0.0
+                qdash = 0.0
+                locl =1
+                locA1 = 0
+                do i=1,dimD
+                    locA1 = locA1 + 1
+                    if (locA1 > maxa(locl)) then
+                        locl = locl+1
+                        locA1=1
+                    end if
+                    if (i==bufferInd(1)) then
+                        !do k=1, grids%supportSPA(ixt)
+                        !    policy(ixpost,k)%coo(1)%row = locl
+                        !    policy(ixpost,k)%coo(1)%col = locA1
+                        !    policy(ixpost,k)%coo(1)%val = 1.0
+                        !end do
+                        q(locl,locA1) = 1.0
+                        qdash(i) = 1.0
+                    end if
+                end do
+                allocate ( x(1))
+                x(1) = 1.0
+            end if
+
+            counter = counter + 1
+            if (grids%beliefStore(ixt+1)%sizepost > 1) then
+                errorOuter = 0.5*sum(abs((qtilde-qdash)))
+                if (counter >= 25) then
+                    !tol = 2D-2
+                    if (ixt > 10 ) then
+                        knn = 4
+                    else if ( ixt == 10) then
+                        knn = 20
+                    else if ( ixt == 9) then
+                        knn = 40
+                    else if ( ixt <= 8) then
+                        knn = 120
+                    end if
+                    !relx = 0.99
+                    !Write(*,*) "Long run 1", counter
+                    if (counter > 50 ) then
+                        !knn = knn*2
+                        !if (ixt	== 7 .and. ixaime == 2) then
+                        !    if (ixa ==3 .or. ixa==8) then
+                        !        continue
+                        !    end if
+                        !end if
+                        if (maxval(qdash) < 1.0 .or.  counter > 75 ) then
+                            allocate(xcopy(sizebuffer))
+                            xcopy = 0.0
+                            xcopy = x(1:sizebuffer)
+                            do m=1,2
+                                maxlocX = maxloc(xcopy)
+                                tesf(m) = 0
+                                do j =1,  relstates !grids%supportSPA(ixt)
+                                    tesf(m) = tesf(m) - prior(numPointsSPA-grids%supportSPA(ixt)+relStatesVec(j))*log(payoff(maxlocX(1),j))
+                                end do
+                                xcopy(maxlocX(1)) = 0.0
+                            end do
+                            if (abs(tesf(1)-tesf(2))/abs(tesf(1)+tesf(2))<0.005) then
+                                errorOuter = 0.0
+                            else
+                                if (counter == 99) write(*,*) "not similar", abs(tesf(1)-tesf(2))/abs(tesf(1)+tesf(2))
+                            end if
+                            deallocate(xcopy)
+                        end if
+
+                    end if
+                    if (counter >= 100) then
+                        Write(*,*) "Long run 1", counter
+                        !errorouter = 0.0
+                    end if
+                end if
+
+                if (counter > 1) then
+                    if (counter >= 5 ) then
+                        errornew = 0.5*sum(abs((qtilde-qdd)))
+                        if (0.5*sum(abs((qtilde-qdd)))<tol) then
+                            relx = 0.1
+                            !if (counter >= 25) then
+                            !    relx = 0.3
+                            !end if
+                            !if (counter >= 50) then
+                            !    relx = 0.5
+                            !end if
+                        end if
+                        !if (counter == 5) then
+                        !    write(*,*) "5 paseed"
+                        !end if
+                        !if (counter == 25) then
+                        !    write(*,*) "25 paseed"
+                        !end if
+                        !if (counter == 50) then
+                        !    write(*,*) "50 paseed"
+                        !end if
+                        if (counter == 100) then
+                            write(*,*) "100 paseed"
+                        end if
+                        if (counter == 1000) then
+                            write(*,*) "1000 paseed"
+                        end if
+                        if (mod(counter,100) == 0 ) then
+                            !relx = 0.999999
+                            !if ( relx < 0.9) then
+                            !    relx = min(relx+0.1, 0.9)
+                            !else if ( relx < 0.98) then
+                            !    relx = min(relx+0.02, 0.99)
+                            !else if ( relx < 0.998) then
+                            !    relx = min(relx+0.002, 0.999)
+                            !else
+                            !    relx = min(relx+0.0002, 0.9999)
+                            !end if
+
+                        end if
+                    end if
+                    qdd = qdash
+                end if
+                qtilde = (1.0-relx)*qdash+relx*qtilde
+
+            else
+                errorOuter = 0.0
             end if
         end do
+        !!!Cache for use on next round
+        !if (ixy < numPointsY) then
+        !    saveDim(unemp,:) = grids%supportSPA(ixt)*maxa
+        !    !locinitialGuessRI(unemp,:)=0.0
+        !    offset = 0
+        !    do k=1,labourChoices
+        !        !locinitialGuessRI(unemp,(k-1)*grids%supportSPA(ixt)*numPointsA+1:(k-1)*grids%supportSPA(ixt)*numPointsA+saveDim(unemp,k))= ccp((k-1)*offset+1:k*saveDim(unemp,k))
+        !        offset = offset + saveDim(unemp,k)
+        !    end do
+        !end if
 
+        !ccpOut=0.0
+        !ccpMat = 0.0
+        !!ccpMat=reshape(ccp, (/grids%supportSPA(ixt),labourChoices,ixa1-1/))
+        !offset = 0
+        !do i=1,labourChoices
+        !    do j =1,maxmaxA
+        !        if (j > maxa(i)) then
+        !            ccpMat(:,i,j) = 0.0
+        !            exit
+        !        end if
+        !        do k=1,grids%supportSPA(ixt)
+        !            ccpMat(k,i,j) =  ccp(k+(j-1)*grids%supportSPA(ixt)+offset)
+        !        end do
+        !    end do
+        !    offset = offset+saveDim(unemp,i)
+        !end do
+        !ccpOut(ixpost,1:grids%supportSPA(ixt),1:labourChoices,1:maxmaxA)=ccpMat
+        !
 
-        if (sizebuffer>grids%supportSPA(ixt)) then
-            continue
+        !do i=1,labourChoices
+        !    do j =1,maxmaxA
+        !        q(i,j) = dot_product(ccpOut(:,i,j),grids%posteriorSPA(ixt,ixtype,ixa, ixAIME,  ixy,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA))
+        !    end do
+        !end do
 
+        if (checks) then
+            !do i=1,grids%supportSPA(ixt)
+            !    checkOther(i) = sum(ccpOut(ixpost,i,:,:))
+            !    !write (*,*) checkSave(i), checkOther(i)
+            !    if (checkOther(i) > 1.05 .OR. checkOther(i)<0.95) then
+            !        write (*,*) "CCP doesn't sum to 1", checkOther(i), i,  ixy, ixA, ixAIME, ixt, unemp
+            !        write (*,*) "converg check", checksave
+            !        write (*,*) "converg check", checkother
+            !        write (*,*) "ccp", ccp
+            !        write (*,*) "ccpout", ccpOut
+            !        stop
+            !    end if
+            !    !ccp((/(i+j*grids%supportSPA(ixt),j=0,Dimd-1)/))=ccp((/(i+j*grids%supportSPA(ixt),j=0,Dimd-1)/))*check**-1
+            !end do
         end if
-        if ( ixy == 7 .and. ixAIME == 2 .and. ixt==17) then
-            continue
-        end if
-        if (maxval(x)<0.9) then
-            continue
 
-        end if
-
-        ccp = 0.0
-        do j =1,  grids%supportSPA(ixt)
-            psum = 0.0
-            do i=1,sizebuffer
-                ccp((bufferInd(i)-1)*grids%supportSPA(ixt)+j) = x(i)*payoff(i,j)
-                psum = psum + ccp((bufferInd(i)-1)*grids%supportSPA(ixt)+j)
+        if (sizebuffer>1) then
+            do k=1, grids%supportSPA(ixt)
+                allocate(policy(ixpost,k)%coo(sizebuffer))
             end do
-            ccp((/((bufferInd(i)-1)*grids%supportSPA(ixt)+j, i=1,sizebuffer)/)) = ccp((/((bufferInd(i)-1)*grids%supportSPA(ixt)+j, i=1,sizebuffer)/))/ psum
-        end do
-        !Get defaults actiosn
-        q= 0.0
-        j = 1
-        locl =1
-        locA1 = 0
-        do i=1,dimD
-            locA1 = locA1 + 1
-            if (locA1 > maxa(locl)) then
-                locl = locl+1
-                locA1=1
-            end if
-            if (i==bufferInd(j)) then
-                q(locl,locA1) = x(j)
-                j = j + 1
-            end if
-        end do
-    else
-        ccp = 0.0
-        ccp((bufferInd(1)-1)*grids%supportSPA(ixt)+1:bufferInd(1)*grids%supportSPA(ixt)) = 1.0
-
-        !Get defaults actiosn
-        q= 0.0
-        locl =1
-        locA1 = 0
-        do i=1,dimD
-            locA1 = locA1 + 1
-            if (locA1 > maxa(locl)) then
-                locl = locl+1
-                locA1=1
-            end if
-            if (i==bufferInd(1)) then
-                q(locl,locA1) = 1.0
-            end if
-        end do
-        allocate ( x(1))
-        x(1) = 1.0
-    end if
-
-    !!Cache for use on next round
-    if (ixy < numPointsY) then
-        saveDim(unemp,:) = grids%supportSPA(ixt)*maxa
-        !locinitialGuessRI(unemp,:)=0.0
-        offset = 0
-        do k=1,labourChoices
-            !locinitialGuessRI(unemp,(k-1)*grids%supportSPA(ixt)*numPointsA+1:(k-1)*grids%supportSPA(ixt)*numPointsA+saveDim(unemp,k))= ccp((k-1)*offset+1:k*saveDim(unemp,k))
-            offset = offset + saveDim(unemp,k)
-        end do
-    end if
-
-    ccpOut=0.0
-    ccpMat = 0.0
-    !ccpMat=reshape(ccp, (/grids%supportSPA(ixt),labourChoices,ixa1-1/))
-    offset = 0
-    do i=1,labourChoices
-        do j =1,maxmaxA
-            if (j > maxa(i)) then
-                ccpMat(:,i,j) = 0.0
-                exit
-            end if
-            do k=1,grids%supportSPA(ixt)
-                ccpMat(k,i,j) =  ccp(k+(j-1)*grids%supportSPA(ixt)+offset)
+            do j =1,  grids%supportSPA(ixt)
+                psum = 0.0
+                do i=1,sizebuffer
+                    if (maxa(1)  - bufferInd(i) < 0 ) then
+                        locl =2
+                        locA1 = bufferInd(i) -  maxa(1)
+                    else
+                        locl =1
+                        locA1 = bufferInd(i)
+                    end if
+                    policy(ixpost,j)%coo(i)%row = locl
+                    policy(ixpost,j)%coo(i)%col = locA1
+                    policy(ixpost,j)%coo(i)%val = x(i)* buffer(i,j)
+                    psum = psum + policy(ixpost,j)%coo(i)%val
+                end do
+                policy(ixpost,j)%coo(:)%val = policy(ixpost,j)%coo(:)%val / psum
             end do
+        else
+            do k=1, grids%supportSPA(ixt)
+                allocate(policy(ixpost,k)%coo(1))
+                !if (size(policy(ixpost,k)%coo) /=1 ) then
+                !    write (*,*) "break!"
+                !end if
+            end do
+
+            !Get defaults actiosn
+            locl =1
+            locA1 = 0
+            do i=1,dimD
+                locA1 = locA1 + 1
+                if (locA1 > maxa(locl)) then
+                    locl = locl+1
+                    locA1=1
+                end if
+                if (i==bufferInd(1)) then
+                    do k=1, grids%supportSPA(ixt)
+                        policy(ixpost,k)%coo(1)%row = locl
+                        policy(ixpost,k)%coo(1)%col = locA1
+                        policy(ixpost,k)%coo(1)%val = 1.0
+                    end do
+                end if
+            end do
+
+        end if
+        !if (max(checkOther(1),checkOther(2)) /= max(checkSave(1), checkSave(2)) .OR. min(checkOther(1),checkOther(2)) /= min(checkSave(1), checkSave(2)) )pause
+        !Calculate continuation value
+        do i=1,grids%supportSPA(ixt)
+            test = 0.0
+            do j=1,sizebuffer
+                test(j)=x(j)* GrossUtil(bufferInd(j),i)
+            end do
+            v(ixpost,i) = log(sum(test))+scale
+            !v(i) /= v(i) .or.
+            if (v(ixpost,i)<-huge(v(ixpost,i))) then
+                v(ixpost,i)=-huge(v(ixpost,i))
+                !continue
+            else if (v(ixpost,i)>0) then
+                write(*,*) "pos util"
+            end if
         end do
-        offset = offset+saveDim(unemp,i)
+
     end do
-    ccpOut(1:grids%supportSPA(ixt),1:labourChoices,1:maxmaxA)=ccpMat
-
-
-    !do i=1,labourChoices
-    !    do j =1,maxmaxA
-    !        q(i,j) = dot_product(ccpOut(:,i,j),grids%posteriorSPA(ixt,ixtype,ixa, ixAIME,  ixy,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA))
+    !minSPA = maxval((/ixt-Tretire+2,1/))
+    !do ixpost = 1, dimval(ixt,3)
+    !    do k = 1, grids%supportSPA(ixt)
+    !        policyout(ixA,ixAIME, ixpost, minSPA-1+k,ixY)%coo = policy(ixpost,k)%coo
     !    end do
     !end do
+    !if ( ixy == numPointsY .AND. ixA == numPointsA .AND. ixAIME == numAIME .AND. ixt==1 .AND. ixType == 4) then
+    !    write (*,*) morethan
+    !    write (*,*) "in error ", inerror
+    !end if
 
-    do i=1,grids%supportSPA(ixt)
-        checkOther(i) = sum(ccpOut(i,:,:))
-        !write (*,*) checkSave(i), checkOther(i)
-        if (checkOther(i) > 1.05 .OR. checkOther(i)<0.95) then
-            write (*,*) "CCP doesn't sum to 1", checkOther(i), i, converged,  ixy, ixA, ixAIME, ixt, unemp
-            write (*,*) "converg check", checksave
-            write (*,*) "converg check", checkother
-            write (*,*) "ccp", ccp
-            write (*,*) "ccpout", ccpOut
-            stop
-        end if
-        !ccp((/(i+j*grids%supportSPA(ixt),j=0,Dimd-1)/))=ccp((/(i+j*grids%supportSPA(ixt),j=0,Dimd-1)/))*check**-1
-    end do
-    !if (max(checkOther(1),checkOther(2)) /= max(checkSave(1), checkSave(2)) .OR. min(checkOther(1),checkOther(2)) /= min(checkSave(1), checkSave(2)) )pause
-    !Calculate continuation value
-    do i=1,grids%supportSPA(ixt)
-        test = 0.0
-        do j=1,sizebuffer
-            test(j)=x(j)* GrossUtil(bufferInd(j),i)
+    end subroutine
+    !! ---------------------------------------------------------------------------------------------------------!
+    !!!solve period
+    !!! when RI is imporant
+    !! ---------------------------------------------------------------------------------------------------------!
+    subroutine valueFncIter(params,grids,vavec,qtilde,prior,sizepost,dimD,supportSPA,ixt,y,maxa,a,ixtype,outerCounter ,stat,knn,v)
+    implicit none
+    !inputs
+    type (structparamstype), intent(in) :: params
+    type (gridsType), intent(in) :: grids
+    integer, intent(in):: sizepost, dimD, supportSPA, ixt, maxa(:), ixtype, outerCounter, knn
+    real(kind=rk),intent(in) :: qtilde(dimD), y(:), a, stat(dimD)
+    real(kind=rk),intent(in) :: prior(numpointsspa)
+    real(kind=rk),intent(in) ::  vavec(dimD,grids%supportSPA(ixt),sizepost) !EV1(numpointsA,sizepost,numpointsspa)
+    !output
+    real(kind=rk), intent(inout) :: v(dimD,grids%supportSPA(ixt))
+
+    !local
+    real(kind=rk) :: error, posterior(grids%supportSPA(ixt)), vloc(dimD,grids%supportSPA(ixt)), posLex(dimD,sizepost), denom, vscaled(dimD,grids%supportSPA(ixt)), expVs(dimD,grids%supportSPA(ixt))
+    real(kind=rk) :: lb(grids%supportSPA(ixt)), diff(size(grids%beliefStore(ixt+1)%distMean)), rem, VA1, meanv, scale, aveVexp(grids%supportSPA(ixt)), priorLoc(grids%supportSPA(ixt)), tempWeight(knn)
+    integer :: i,j ,k, ix(1), expo, postPos(dimD,knn), locA1, locL, counter, tempInt(1)
+    !integer(kind=li) :: bindist
+    real(kind=rk) :: trans(grids%supportSPA(ixt),grids%supportSPA(ixt)), postDis(dimD,2), vdd(dimD,grids%supportSPA(ixt)), relx, tolOuter, postWeight(dimD,knn), mean, sumknn
+    !real(kind=rk), parameter :: tol=1D-6
+
+    error = 0.2
+    counter = 0
+    !v=0.0
+    !prior = (/0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0, 0.3,0.3,0.4/)
+    priorLoc = prior(numpointsSpa-grids%supportSPA(ixt)+1:numpointsSpa)
+    !trans = 0.0
+    !do i =1,grids%supportSPA(ixt)-1
+    !    trans(i,i) = (1-params%p)
+    !    trans(i+1,i) = params%p
+    !end do
+    !trans(grids%supportSPA(ixt),grids%supportSPA(ixt)) = 1.0
+    trans = params%spaTransMat(numpointsSpa-grids%supportSPA(ixt)+1:numpointsSpa,numpointsSpa-grids%supportSPA(ixt)+1:numpointsSpa)
+
+    !locl =1
+    !locA1 = 0
+    !do i=1,dimD
+    !    locA1 = locA1 + 1
+    !    if (locA1 > maxa(locl)) then
+    !        locl = locl+1
+    !        locA1=1
+    !    end if
+    !    cons = A  + Y(locl) - (grids%Agrid(ixType,ixt+1, locA1))/(1+params%r)
+    !
+    !    VB1(i) = params%thetab*((grids%Agrid(ixType,ixt+1, locA1)+params%K)**(1-params%gamma))/(1-params%gamma)
+    !
+    !    u(i) = utility(params,cons,locl-1)
+    !    stat(i) = u(i) +  params%beta * (grids%mortal(ixt+1)*VB1(i))
+    !    do j=1,grids%supportSPA(ixt) - 1
+    !        vavec(i,j,:) =  (1-params%p)*EV1(locA1,:,numPointsSPA-grids%supportSPA(ixt)+j)+params%p*EV1(locA1,:,numPointsSPA-grids%supportSPA(ixt)+j+1)
+    !    end do
+    !
+    !end do
+
+
+    relx = 0.0
+    tolOuter = 0.05
+    if (outerCounter > 100) tolOuter = 0.01
+    if (outerCounter > 500) tolOuter = 0.00001
+    do while(error > tolOuter)
+        vscaled = v-maxval(v)
+        expVs = exp(vscaled)
+        aveVexp = matmul(qtilde,exp(vscaled))
+        locl =1
+        locA1 = 0
+        do i=1,dimD
+            locA1 = locA1 + 1
+            if (locA1 > maxa(locl)) then
+                locl = locl+1
+                locA1=1
+            end if
+            !vscaled = v-maxval(v(i,:))
+            !expVs = exp(vscaled)
+            !aveVexp = matmul(qtilde,exp(vscaled))
+            posterior = priorLoc*exp(vscaled(i,:))/ aveVexp !(matmul(qtilde,exp(vscaled)))
+            denom = sum(posterior)
+            posterior = posterior/ denom
+
+            posterior = matmul(trans,posterior)
+
+            if (ixt+1 >=Tretire) then
+                posterior(1) = 0
+                denom = sum(posterior)
+                posterior = posterior/ denom
+            end if
+            if (abs(sum(posterior))-1.0>0.0001) then
+                write(*,*) 'break'
+            end if
+            mean = dot_product(posterior((grids%supportSPA(ixt)-grids%supportSPA(ixt+1)+1):),(/(real(j,rk),j=1,grids%supportSPA(ixt+1))/))
+            diff = abs(grids%beliefStore(ixt+1)%distMean  - mean)
+            tempint= minloc(diff)
+            tempWeight =0.0
+            if (diff( tempint(1)) <= 10E-17 ) then
+                postPos(i,1) = tempint(1)
+                postWeight(i,1) = 1.0
+                postWeight(i,2:knn) = 0.0
+                postPos(i,2:knn) = 1
+            else
+                tempWeight(1) = diff( tempint(1))**-1
+                postPos(i,1) = tempint(1)
+                diff( tempint(1)) = huge(diff)
+                do k =2,knn
+                    tempint= minloc(diff)
+                    tempWeight(k) = diff( tempint(1))**-1
+                    postPos(i,k) = tempint(1)
+                    diff( tempint(1)) = huge(diff)
+                end do
+                sumknn = sum(tempWeight)
+                do k = 1, knn
+                    postWeight(i,k) =tempWeight(k)/sumknn
+                end do
+            end if
+            !call nearestDistLoc(grids,posterior,ixt,postPos(i,:))
+
+            !write (*,*) "done"
+            !end do
+            !rem
+
+            !else
+            !    expo = 0
+            !    bindist = 0
+            !    !write(*,*) huge(bindist)
+            !    do j =2,grids%supportSPA(ixt)
+            !        do k=1,floor(10*posterior(j)+tol)
+            !            bindist = bindist + 10_li**expo
+            !            expo = expo + 1
+            !        end do
+            !        expo = expo + 1
+            !    end do
+            !
+            !    !postPos(i,1,:) = FINDLOC ( grids%beliefStore(ixt+1)%storePostBin , bindist )
+            !    !postDis(i,1) = 1.0
+            !    !postPos(i,2,:) = 1 !FINDLOC ( grids%beliefStore(ixt+1)%storePostBin , bindist )
+            !    !postDis(i,2) = 0.0
+            !
+            !    postPos(i,:) = FINDLOC ( grids%beliefStore(ixt+1)%storePostBin , bindist )
+            !
+            !    if (postPos(i,1) <= 0 ) then
+            !        write(*,*) 'break'
+            !    end if !.OR. postPos(i,1)>
+            !end if
+
+            !expo = 0
+            !bindist = 0
+            !!write(*,*) huge(bindist)
+            !do j =2,grids%supportSPA(ixt)
+            !    do k=1,floor(10*posterior(j)+tol)
+            !        bindist = bindist + 10_li**expo
+            !        expo = expo + 1
+            !    end do
+            !    expo = expo + 1
+            !end do
+            !
+            !postPos(i,:) = FINDLOC ( grids%beliefStore(ixt+1)%storePostBin , bindist )
+            !if (postPos(i,1) <= 0 ) then
+            !    write(*,*) 'break'
+            !end if !.OR. postPos(i,1)>
+            !write (*,*) "done"
+            do j=1,grids%supportSPA(ixt)
+                !vavec(i,j,:) =  (1-params%p)*EV1(locA1,:,numPointsSPA-grids%supportSPA(ixt)+j)+params%p*EV1(locA1,:,numPointsSPA-grids%supportSPA(ixt)+j+1)
+                !va1 = params%beta * (1- grids%mortal(ixt+1))*(postdis(i,1)*vavec(i,j,postPos(i,1,1))+postdis(i,2)*vavec(i,j,postPos(i,2,1))) !10.0_rk*
+                sumknn =0.0
+                do k =1,knn
+                    sumknn = sumknn + postWeight(i,k)*vavec(i,j,postPos(i,k))
+                end do
+                va1 = params%beta * (1- grids%mortal(ixt+1))*(sumknn)
+                vloc(i,j) = stat(i) +  va1
+            end do
+            !va1 =   params%beta * (1- grids%mortal(ixt+1))*(postdis(i,1)*EV1(locA1,postPos(i,1,1),numPointsSPA)+postdis(i,2)*EV1(locA1,postPos(i,2,1),numPointsSPA))
+            !va1 =   params%beta * (1- grids%mortal(ixt+1))*(vavec(i,grids%supportSPA(ixt,postPos(i,1)))!+postdis(i,2)*EV1(locA1,postPos(i,2,1),numPointsSPA))
+            !vloc(i,grids%supportSPA(ixt)) = stat(i) +   VA1
         end do
-        v(i) = log(sum(test))+scale
-        !v(i) /= v(i) .or.
-        if (v(i)<-huge(v(i))) then
-            v(i)=-huge(v(i))
-            !continue
+
+        meanV = sum(v)/(dimD*sizepost)
+        error = sum(abs((vloc-v)/meanV))/(dimD*sizepost)
+        if (counter> 1) then
+            if (counter > 2) then
+                if (sum(abs((vdd-v)/meanV))/(dimD*sizepost)<tolouter) then
+                    relx = 0.5
+                end if
+            end if
+            vdd = vloc
+        end if
+        v = (1-relx)*vloc + relx*v
+        counter = counter + 1
+
+        if (counter >= 1000) then
+            tolOuter = 0.1
+            if (counter >= 2000) then
+                tolOuter = 0.2
+                if (counter >= 3000) then
+                    Write(*,*) "Long run 2", counter
+                    error = 0.0
+                end if
+            end if
         end if
     end do
 
-
-    if ( ixy == numPointsY .AND. ixA == numPointsA .AND. ixAIME == numAIME .AND. ixt==1 .AND. ixType == 4) then
-        write (*,*) morethan
-    end if
-    contains
-    !!function
-    !function func(p) result(res)
-    !use Header
+    end subroutine
+    !subroutine distToLex(dist,sizepost,posLex)
     !implicit none
     !!input
-    !real(kind=rk), intent(in) :: p(:)
-    !!output
-    !real(kind=rk), allocatable :: res(:)
-    !!local
-    !real(kind=hp) :: systemEq(dim),test(dim), loc!,grids%supportSPA(ixt)
-    !integer:: d, y, locl, loca1, j
     !
-    !allocate(res(dim))
-    !locl =1
-    !locA1 = 0
-    !do d=1,dimD
-    !    locA1 = locA1 + 1
-    !    if (locA1 > maxa(locl)) then
-    !        locl = locl+1
-    !        locA1=1
-    !    end if
-    !    do y=1,grids%supportSPA(ixt)
-    !        GrossUtil(d,y) = const(locl,locA1,y)*(dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d-1)*grids%supportSPA(ixt)+1:d*grids%supportSPA(ixt))))
-    !    end do
-    !end do
-    !
-    !do d=1,dimD
-    !    do y=1,grids%supportSPA(ixt)
-    !        res((d-1)*grids%supportSPA(ixt)+y) = GrossUtil(d,y) / sum((GrossUtil(:,y)))
-    !    end do
-    !end do
-    !
-    !end function
-    !!Jacoben
-    !FUNCTION Jacob(p)
-    !USE header
-    !IMPLICIT NONE
-    !REAL(kind=rk), DIMENSION(:), INTENT(IN) :: p
-    !REAL(kind=rk), DIMENSION(size(p),size(p)) :: Jacob
-    !
-    !real(kind=rk) :: l1, l2 ,l3, l4
-    !integer :: row, column
-    !
-    !integer :: d1, y1, d2, y2, locl, locA1
-    !!shouldn't do this twice
-    !locl =1
-    !locA1 = 0
-    !do d1=1,dimD
-    !    locA1 = locA1 + 1
-    !    if (locA1 > maxa(locl)) then
-    !        locl = locl+1
-    !        locA1=1
-    !    end if
-    !    do y1=1,grids%supportSPA(ixt)
-    !        GrossUtil(d1,y1) = const(locl,locA1,y1)*&
-    !            (dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d1-1)*grids%supportSPA(ixt)+1:d1*grids%supportSPA(ixt))))
-    !    end do
-    !end do
-    !locl =1
-    !locA1 = 0
-    !do d1=1,dimD
-    !    locA1 = locA1 + 1
-    !    if (locA1 > maxa(locl)) then
-    !        locl = locl+1
-    !        locA1=1
-    !    end if
-    !    do y1=1,grids%supportSPA(ixt)
-    !        do d2=1,dimD
-    !            do y2=1,grids%supportSPA(ixt)
-    !                row = (d1-1)*grids%supportSPA(ixt)+y1
-    !                column = (d2-1)*grids%supportSPA(ixt)+y2
-    !                !locl=(d1-1)/(maxmaxA)+1
-    !                !locA1=mod(d1-1,maxmaxA)+1
-    !                l1= sum(const(locl,locA1,:))
-    !                l2 = dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d1-1)*grids%supportSPA(ixt)+1:d1*grids%supportSPA(ixt)))
-    !                l3 = sum(GrossUtil(d1,:))
-    !                l4 = l3**2
-    !                jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2) = &
-    !                    (-sum(const(locl,locA1,:))*dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d1-1)* &
-    !                    grids%supportSPA(ixt)+1:d1*grids%supportSPA(ixt)))/(sum(GrossUtil(y1,:)))**2)
-    !                if (d1==d2) then
-    !                    jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2) = jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2) + &
-    !                        + 1 /(sum(GrossUtil(y1,:)))
-    !                end if
-    !                jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2)= const(locl,locA1,y1)*grids%posteriorSPA(ixt,numPointsSPA-y2+1)* &
-    !                    jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2)
-    !            end do
-    !        end do
-    !    end do
-    !end do
-    !
-    !END FUNCTION Jacob
-
-    FUNCTION funcv(x)
-    USE header
-    IMPLICIT NONE
-    REAL(kind=rk), DIMENSION(:), INTENT(IN) :: x
-    REAL(kind=rk), DIMENSION(size(x)) :: funcv
-    !funcv = x - func(x)
-    END FUNCTION funcv
-    end subroutine
+    !end subroutine
     !! ---------------------------------------------------------------------------------------------------------!
     !!!solve period
     !!! when RI is imporant
@@ -2477,25 +3252,36 @@
     !real(kind=rk), intent(out) :: ccpOut(:,:,:), v(:), q(:,:), uConst(:,:,:)
     !!local
     !!integer, parameter :: hp = selected_real_kind(16)
-    !integer :: ixl,  ixA1, i, j, iter, dim, dimD ,K, labourChoices, offset, testInt, maxmaxA !A1
+    !integer :: ixl,  ixA1, i, j, dim, dimD ,K, labourChoices, offset, maxmaxA, sizeBuffer !A1, testInt
     !integer, allocatable :: maxA(:)
-    !real(kind=rk) :: Y,  ubA1, A,AIME, va1, vb1,  check,EVloc(numAIME), checkSave(grids%supportSPA(ixt)), checkOther(grids%supportSPA(ixt)) !cons
-    !real(kind=rk) :: scale, toputil
-    !real(kind=rk), allocatable :: values(:), ccpMat(:,:,:), eye(:,:)
+    !real(kind=rk) :: Y,  ubA1, A,AIME, EVloc(numAIME), checkSave(grids%supportSPA(ixt)), checkOther(grids%supportSPA(ixt)) !cons, va1, vb1, check
+    !real(kind=rk) :: scale !, toputil
+    !real(kind=rk), allocatable :: values(:), ccpMat(:,:,:) !, eye(:,:)
     !real(kind=rk), allocatable :: const(:,:,:), GrossUtil(:,:)
-    !real(kind=rk), allocatable  ::  parameters(:), ccp(:), test(:), utilVec(:)
-    !integer, save :: saveDim(2,numPointsL), lastixT = 0, unemp, div, d, locl, locA1
-    !integer, allocatable :: rang(:)
-    !real(kind=rk), allocatable, save :: locinitialGuessRI(:,:)
-    !logical :: converged, unchanged
-    !character (len=2000) :: text(2)
+    !real(kind=rk), allocatable  ::  parameters(:), ccp(:), test(:), utilVec(:), buffer(:,:)
+    !integer, save :: saveDim(2,numPointsL), unemp, locl, locA1, morethan(11) = 0 !,choices = 0!, div, lastixT = 0
+    !integer, allocatable :: rang(:), bufferInd(:)
+    !!real(kind=rk), allocatable, save :: locinitialGuessRI(:,:)
+    !logical :: converged !, unchanged
+    !!character (len=2000) :: text(2)
     !
     !!temp
-    !real(kind=rk), allocatable :: tempC1(:,:), tempC2(:,:)
-    !real(kind=rk) :: diff, lowestUtil
+    !!real(kind=rk), allocatable :: tempC1(:,:), tempC2(:,:)
+    !real(kind=rk) ::  lowestUtil, psum, temp !diff,
+    !!integer :: iter, D
+    !!REAL(kind=rk) :: error
+    !!LOGICAL :: logcheck
+    !integer, allocatable          :: kwa(:)
+    !integer                       :: n, me, m, np, mnn2, maxit, maxfun, iprint, &
+    !    maxnm, iout, mode, ifail, lwa, lkwa, lactiv
+    !double precision, allocatable :: x(:), g(:), df(:), dg(:,:), u(:), &
+    !    xl(:), xu(:), c(:,:),  wa(:), d(:), payoff(:,:), denom(:)
+    !double precision                 f(1), acc, accqp, stpmin, rho
+    !logical, allocatable          :: active(:)
+    !logical                       :: lql
+    !external                      :: ql
+    !integer :: iter !meq, ierr, nact,
     !
-    !REAL(kind=rk) :: error
-    !LOGICAL :: logcheck
     !ixa1 = 0
     !lowestUtil = 0.0
     !!If suffered unemployment shock then can't choose to work
@@ -2505,6 +3291,10 @@
     !!if (ixy == 4 .AND. ixt ==14 .AND. ixAIME == 2) then
     !!    write(*,*) 'stop'
     !!end if
+    !!if ( ixy == 4 .and. ixAIME == 2 .and. ixt==8 .and. ixType == 4 .and. ixa == 4) then
+    !if ( ixy == 1 .and. ixAIME == 1 .and. ixt==9 .and. ixType == 4 .and. ixa == 3) then
+    !    continue
+    !end if
     !do ixL = 0,(labourChoices-1),1           ! points of income choice
     !    ! Value of income and information for optimisation
     !    if (ixa1 > numPointsA) maxA(ixl) = numPointsA
@@ -2557,103 +3347,20 @@
     !!    if (rank==0) write(*,*) maxval(tempC1) - minval(tempC1)
     !!    diff = maxval(tempC1) - minval(tempC1)
     !!end if
+    !
     !scale = maxval(const)
+    !!temp = log(1.0d300)
+    !scale= scale!-temp
     !const = const-scale
+    !
     !const=exp(const)
     !
     !
     !dimD = sum(maxA)!labourChoices*(ixa1-1)
     !dim = grids%supportSPA(ixt)*dimD !*labourChoices*(ixa1-1)
-    !allocate(values(dim+1),parameters(dim),ccp(dim),ccpMat(grids%supportSPA(ixt),labourChoices,maxmaxA), GrossUtil(dimD,grids%supportSPA(ixt)),test(dimD),utilVec(dim),rang(dimd))
-    !!copy into util vec for comparision with edge solutions
-    !ixl =1
-    !ixa1 = 0
-    !do d=1,dimD
-    !    ixa1 = ixa1 + 1
-    !    if ( ixa1 > maxa(ixl)) then
-    !        ixl = ixl+1
-    !        ixa1=1
-    !    end if
-    !    do i = 1, grids%supportSPA(ixt)
-    !        utilVec((d-1)*grids%supportSPA(ixt)+i) = uConst(numPointsSPA-grids%supportSPA(ixt)+i,ixl,ixa1)
-    !    end do
-    !end do
-    !
-    !!Default ccp to zero for regions that are ignored
-    !ccp = 0.0
-    !!Want to save grid to reuse over employment states
+    !allocate(values(dim+1),parameters(dim),ccp(dim),ccpMat(grids%supportSPA(ixt),labourChoices,maxmaxA), buffer(dimD,grids%supportSPA(ixt)),bufferInd(dimD), GrossUtil(dimD,grids%supportSPA(ixt)),test(dimD),utilVec(dim),rang(dimd))
     !unemp = mod(ixy-1,2)+1
-    !if (ixt/=lastixT) then
-    !    parameters = grids%initialGuessRI(1,1:dim)
-    !    if (allocated(locinitialGuessRI)) deallocate(locinitialGuessRI)
-    !    allocate(locinitialGuessRI(2,grids%supportSPA(ixt)*numPointsL*numPointsA))
-    !else if (ixy<=2) then
-    !    parameters = grids%initialGuessRI(unemp,1:dim)
-    !else
-    !    parameters = grids%initialGuessRI(unemp,1:dim)
-    !    !parameters=0.0
-    !    !offset = 0
-    !    !do k=1,labourChoices
-    !    !    if (saveDim(unemp,k) > grids%supportSPA(ixt)*(maxmaxA) ) saveDim(unemp,k) = grids%supportSPA(ixt)*maxa(k)
-    !    !    parameters(offset+1:offset+saveDim(unemp,k))= &
-    !    !        locinitialGuessRI(unemp,(k-1)*grids%supportSPA(ixt)*numPointsA+1:(k-1)*grids%supportSPA(ixt)*numPointsA+saveDim(unemp,k))
-    !    !    offset = offset + saveDim(unemp,k)
-    !    !end do
-    !    !!Make sure we don't pass zeros across as gets stuck at them if give them as initial conds
-    !    !parameters = parameters + 0.1/dim
-    !end if
-    !!store last calculated period to know when we change period
-    !lastixT = ixt
     !
-    !!parameters = grids%initialGuessRI(1,1:dim)
-    !!if (mod(ixy,2)==0) then
-    !!    parameters(grids%supportSPA(ixt)*(ixa1-1)+1:dim)=0.0
-    !!end if
-    !
-    !!Normalise guess to be prob dist
-    !do i=1,grids%supportspa(ixt)
-    !    check = sum(parameters((/(i+j*grids%supportspa(ixt),j=0,dimd-1)/)))
-    !    parameters((/(i+j*grids%supportspa(ixt),j=0,dimd-1)/))=parameters((/(i+j*grids%supportspa(ixt),j=0,dimd-1)/))*check**-1
-    !end do
-    !
-    !check = 1.0
-    !iter=0
-    !converged = .FALSE.
-    !div = 0
-    !do while (.not. converged)
-    !    !Convergence criteria should depend of cost of attention otherwise utility can get very small and it just assigns equiprobable dist
-    !    do while (check >= (0.0001/10**div) ) !0.0001 !0.001!0.005!0.0001!0.00005 !0.00001 !/params%lambda *params%lambda
-    !        iter=iter+1
-    !        ccp = func(parameters)
-    !        check = sum(abs(ccp-parameters))
-    !        parameters=ccp
-    !    end do
-    !    !ccp = parameters
-    !    !call newt(funcv,jacob,ccp,0.001_rk,logcheck,error)
-    !
-    !    !Check is good enough solution
-    !    do i=1,grids%supportSPA(ixt)
-    !        !write (text(i),*) (i+j*grids%supportSPA(ixt),j=0,Dimd-1)
-    !        checkSave(i) = sum(ccp((/(i+j*grids%supportSPA(ixt),j=0,Dimd-1)/))) !grids%supportSPA(ixt)*maxa(i)
-    !        if (checkSave(i) > 1.0001 .OR. checkSave(i)<0.9999) then
-    !            write (*,*) "CCP doesn't sum to 1", checkSave(i), params%lambda, ixt
-    !            stop
-    !        else
-    !            if (div > 0) write (*,*) "passed!", checkSave(i)
-    !            converged = .TRUE.
-    !        end if
-    !    end do
-    !    div = div+1
-    !end do
-    !
-    !
-    !!!compare to "edge" solutions 9should be corner but too hard for now
-    !topUtil = 0
-    !do i = 1,grids%supportSPA(ixt)! numPointsSPA-grids%supportSPA(ixt)+1,numPointsSPA
-    !    rang = (/(i+j*grids%supportSPA(ixt),j=0,dimd-1)/)
-    !    topUtil = topUtil + grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+i)*dot_product(ccp((/(i+j*grids%supportSPA(ixt),j=0,dimd-1)/)),utilvec((/(i+j*grids%supportSPA(ixt),j=0,dimd-1)/))) ! utilvec((i-1)*grids%supportSPA(ixt)+1:i*grids%supportSPA(ixt)))
-    !end do
-    !unchanged = .true.
     !locl =1
     !locA1 = 0
     !do i=1,dimD
@@ -2662,30 +3369,235 @@
     !        locl = locl+1
     !        locA1=1
     !    end if
-    !    if (dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA), utilvec((i-1)*grids%supportSPA(ixt)+1:i*grids%supportSPA(ixt))) > toputil  ) then
-    !        topUtil = dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA), utilvec((i-1)*grids%supportSPA(ixt)+1:i*grids%supportSPA(ixt)))
-    !        ccp = 0.0
-    !        ccp((i-1)*grids%supportSPA(ixt)+1:i*grids%supportSPA(ixt)) = 1.0
-    !        unchanged = .false.
-    !        GrossUtil = 0.0
-    !        do j = 1,grids%supportSPA(ixt)
-    !            GrossUtil(i,j) = const(locl,locA1,j)
-    !        end do
+    !    do j = 1,grids%supportSPA(ixt)
+    !        GrossUtil(i,j) = const(locl,locA1,j)
+    !    end do
+    !end do
+    !
+    !!if ( ixy == 1 .and. ixAIME == 2 .and. ixt==16 .and. ixType == 1 .and. ixa == 2) then
+    !!    continue
+    !!end if
+    !call skylineBNL(GrossUtil,dimD,grids%supportSPA(ixt),buffer,bufferInd,sizeBuffer )
+    !if (minval(buffer(1:sizeBuffer,:))< 0.0) then
+    !    write (*,*) 'break'
+    !end if
+    !morethan(11) = morethan(11) + 1
+    !do i=1,10
+    !    if (sizebuffer > i ) then
+    !        morethan(i) = morethan(i) + 1
+    !    else
+    !        exit
     !    end if
     !end do
-    !if (unchanged .AND. maxval(ccp)<0.999) then
-    !    write (*,*) 'Unchanged!'
+    !!if (sizebuffer >= 3 ) then
     !
-    !    !stop
+    !!end if
+    !!if (sizebuffer > choices) then
+    !!    choices = sizebuffer
+    !!    !write (*,*) 'num chouices', choices
+    !!    !write (*,*) 'dim reduc ' , real(choices,rk)/real(dimD,rk)
+    !!end if
+    !!return
+    !
+    !if (ixt==9) then
+    !    if (ixa == 20) then
+    !        if (ixAIME == 2) then
+    !            if (ixy == 3) then
+    !                iout = 6
+    !            end if
+    !        end if
+    !    end if
+    !end if
+    !if (sizebuffer> 1) then
+    !    if (sizebuffer>grids%supportSPA(ixt)) then
+    !        !write(*,*) "undefined!"
+    !    end if
+    !    !   Set some constants and initial values
+    !
+    !    iout   = 6
+    !    acc    = 1.0d-14 !1.0d-9
+    !    if (params%lambda < 1.0D-11 ) acc = 0.01
+    !    accqp  = 0 !1.0d-14
+    !    stpmin = 1.0d-5
+    !    maxit  = 100
+    !    if (params%lambda < 1.0D-11 ) maxit = 1000
+    !    maxfun = 20
+    !    if (params%lambda < 1.0D-9 ) maxfun = 50
+    !    maxnm  = 10
+    !    rho    = 0
+    !    lql    = .true.
+    !    iprint = 0
+    !    n      = sizebuffer
+    !    np     = 1
+    !    m      = 1
+    !    me     = 1
+    !    mnn2   = m + n + n + 2
+    !    mode   = 0
+    !    ifail  = 0
+    !    lwa    = 3*(n+1)*(n+1)/2 + 33*(n+1) + 9*m + 150
+    !    lkwa   = n + 30
+    !    lactiv = 2*m + 10
+    !
+    !    !   Allocate arrays
+    !
+    !    allocate ( x(n+1), xl(n+1), xu(n+1), df(n+1), g(m), &
+    !        dg(m,n+1), u(mnn2), c(n+1,n+1), d(n+1), &
+    !        wa(lwa), kwa(lkwa), active(lactiv), payoff(sizebuffer,grids%supportSPA(ixt)), denom(grids%supportSPA(ixt)))
+    !
+    !
+    !    !   Set starting values
+    !
+    !    xl = 0.0
+    !    x  = 0.5
+    !    xu = 1.0
+    !
+    !    do i=1, sizebuffer
+    !        do j =1,  grids%supportSPA(ixt)
+    !            payoff(i,j) = buffer(i,j)
+    !            if (payoff(i,j) <= 0.0) then
+    !                payoff(i,j) = tiny(payoff)
+    !            end if
+    !        end do
+    !    end do
+    !
+    !    denom = 0.0
+    !    do j =1,  grids%supportSPA(ixt)
+    !        do i=1, sizebuffer
+    !            denom(j) = denom(j) + x(i)*payoff(i,j)
+    !        end do
+    !    end do
+    !    f = 0
+    !    do j =1,  grids%supportSPA(ixt)
+    !        f(1) = f(1) - grids%posteriorSPA(ixt,ixtype,ixa, ixAIME,  ixy,numPointsSPA-grids%supportSPA(ixt)+j)*log(denom(j))
+    !    end do
+    !    g(1) =  1.0- sum(x(1:n))
+    !
+    !    !============================================================
+    !    !        if (ifail.EQ.-1) goto 4
+    !    !2       continue
+    !    !============================================================
+    !    !   This block computes all derivative values.
+    !    !
+    !    df = 0
+    !    do i=1, n
+    !        do j =1,  grids%supportSPA(ixt)
+    !            df(i)   = df(i)-((grids%posteriorSPA(ixt,ixtype,ixa, ixAIME,  ixy,numPointsSPA-grids%supportSPA(ixt)+j)*payoff(i,j))/(denom(j)))
+    !        end do
+    !    end do
+    !    dg =  -1
+    !    ifail = -1
+    !    iter = 0
+    !    do while (ifail  < 0 )
+    !        if (iter==0)ifail= 0
+    !        iter = iter + 1
+    !
+    !        if ( ixy == 7 .and. ixAIME == 3 .and. ixt==14 .and. ixType == 1 .and. ixa == 1) then
+    !            continue
+    !            iprint = 4
+    !        end if
+    !        call nlpqlp (    np,      m,     me,      m,      n, &
+    !            n+1,   mnn2,      x,      f,      g, &
+    !            df,     dg,      u,     xl,     xu, &
+    !            c,      d,    acc,  accqp, stpmin, &
+    !            maxfun,  maxit,  maxnm,    rho, iprint, &
+    !            mode,   iout,  ifail,     wa,    lwa, &
+    !            kwa,   lkwa, active, lactiv,    lql, &
+    !            ql)
+    !
+    !        if (ifail>0) then
+    !            write(*,*) "failed"
+    !        end if
+    !
+    !        if (ifail==-1) then
+    !            denom = 0.0
+    !            do j =1,  grids%supportSPA(ixt)
+    !                do i=1, sizebuffer
+    !                    denom(j) = denom(j) + x(i)*payoff(i,j)
+    !                end do
+    !            end do
+    !            f = 0
+    !            do j =1,  grids%supportSPA(ixt)
+    !                f(1) = f(1) - grids%posteriorSPA(ixt,ixtype,ixa, ixAIME,  ixy,numPointsSPA-grids%supportSPA(ixt)+j)*log(denom(j))
+    !            end do
+    !            g(1) =  1.0- sum(x(1:n))
+    !        elseif (ifail==-2) then
+    !            df = 0
+    !            do i=1, n
+    !                do j =1,  grids%supportSPA(ixt)
+    !                    df(i)   = df(i)-((grids%posteriorSPA(ixt,ixtype,ixa, ixAIME,  ixy,numPointsSPA-grids%supportSPA(ixt)+j)*payoff(i,j))/(denom(j)))
+    !                end do
+    !            end do
+    !            dg =  -1
+    !        end if
+    !    end do
+    !
+    !
+    !    if (sizebuffer>grids%supportSPA(ixt)) then
+    !        continue
+    !
+    !    end if
+    !    if ( ixy == 7 .and. ixAIME == 2 .and. ixt==17) then
+    !        continue
+    !    end if
+    !    if (maxval(x)<0.9) then
+    !        continue
+    !
+    !    end if
+    !
+    !    ccp = 0.0
+    !    do j =1,  grids%supportSPA(ixt)
+    !        psum = 0.0
+    !        do i=1,sizebuffer
+    !            ccp((bufferInd(i)-1)*grids%supportSPA(ixt)+j) = x(i)*payoff(i,j)
+    !            psum = psum + ccp((bufferInd(i)-1)*grids%supportSPA(ixt)+j)
+    !        end do
+    !        ccp((/((bufferInd(i)-1)*grids%supportSPA(ixt)+j, i=1,sizebuffer)/)) = ccp((/((bufferInd(i)-1)*grids%supportSPA(ixt)+j, i=1,sizebuffer)/))/ psum
+    !    end do
+    !    !Get defaults actiosn
+    !    q= 0.0
+    !    j = 1
+    !    locl =1
+    !    locA1 = 0
+    !    do i=1,dimD
+    !        locA1 = locA1 + 1
+    !        if (locA1 > maxa(locl)) then
+    !            locl = locl+1
+    !            locA1=1
+    !        end if
+    !        if (i==bufferInd(j)) then
+    !            q(locl,locA1) = x(j)
+    !            j = j + 1
+    !        end if
+    !    end do
+    !else
+    !    ccp = 0.0
+    !    ccp((bufferInd(1)-1)*grids%supportSPA(ixt)+1:bufferInd(1)*grids%supportSPA(ixt)) = 1.0
+    !
+    !    !Get defaults actiosn
+    !    q= 0.0
+    !    locl =1
+    !    locA1 = 0
+    !    do i=1,dimD
+    !        locA1 = locA1 + 1
+    !        if (locA1 > maxa(locl)) then
+    !            locl = locl+1
+    !            locA1=1
+    !        end if
+    !        if (i==bufferInd(1)) then
+    !            q(locl,locA1) = 1.0
+    !        end if
+    !    end do
+    !    allocate ( x(1))
+    !    x(1) = 1.0
     !end if
     !
     !!!Cache for use on next round
     !if (ixy < numPointsY) then
     !    saveDim(unemp,:) = grids%supportSPA(ixt)*maxa
-    !    locinitialGuessRI(unemp,:)=0.0
+    !    !locinitialGuessRI(unemp,:)=0.0
     !    offset = 0
     !    do k=1,labourChoices
-    !        locinitialGuessRI(unemp,(k-1)*grids%supportSPA(ixt)*numPointsA+1:(k-1)*grids%supportSPA(ixt)*numPointsA+saveDim(unemp,k))= ccp((k-1)*offset+1:k*saveDim(unemp,k))
+    !        !locinitialGuessRI(unemp,(k-1)*grids%supportSPA(ixt)*numPointsA+1:(k-1)*grids%supportSPA(ixt)*numPointsA+saveDim(unemp,k))= ccp((k-1)*offset+1:k*saveDim(unemp,k))
     !        offset = offset + saveDim(unemp,k)
     !    end do
     !end if
@@ -2707,12 +3619,13 @@
     !    offset = offset+saveDim(unemp,i)
     !end do
     !ccpOut(1:grids%supportSPA(ixt),1:labourChoices,1:maxmaxA)=ccpMat
-    !!Get defaults actiosn
-    !do i=1,labourChoices
-    !    do j =1,maxmaxA
-    !        q(i,j) = dot_product(ccpOut(:,i,j),grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA))
-    !    end do
-    !end do
+    !
+    !
+    !!do i=1,labourChoices
+    !!    do j =1,maxmaxA
+    !!        q(i,j) = dot_product(ccpOut(:,i,j),grids%posteriorSPA(ixt,ixtype,ixa, ixAIME,  ixy,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA))
+    !!    end do
+    !!end do
     !
     !do i=1,grids%supportSPA(ixt)
     !    checkOther(i) = sum(ccpOut(i,:,:))
@@ -2730,103 +3643,115 @@
     !!if (max(checkOther(1),checkOther(2)) /= max(checkSave(1), checkSave(2)) .OR. min(checkOther(1),checkOther(2)) /= min(checkSave(1), checkSave(2)) )pause
     !!Calculate continuation value
     !do i=1,grids%supportSPA(ixt)
-    !    test= GrossUtil(:,i)
+    !    test = 0.0
+    !    do j=1,sizebuffer
+    !        test(j)=x(j)* GrossUtil(bufferInd(j),i)
+    !    end do
     !    v(i) = log(sum(test))+scale
+    !    !v(i) /= v(i) .or.
+    !    if (v(i)<-huge(v(i))) then
+    !        v(i)=-huge(v(i))
+    !        !continue
+    !    end if
     !end do
     !
+    !
+    !if ( ixy == numPointsY .AND. ixA == numPointsA .AND. ixAIME == numAIME .AND. ixt==1 .AND. ixType == 4) then
+    !    write (*,*) morethan
+    !end if
     !contains
-    !!function
-    !function func(p) result(res)
-    !use Header
-    !implicit none
-    !!input
-    !real(kind=rk), intent(in) :: p(:)
-    !!output
-    !real(kind=rk), allocatable :: res(:)
-    !!local
-    !real(kind=hp) :: systemEq(dim),test(dim), loc!,grids%supportSPA(ixt)
-    !integer:: d, y, locl, loca1, j
-    !
-    !allocate(res(dim))
-    !locl =1
-    !locA1 = 0
-    !do d=1,dimD
-    !    locA1 = locA1 + 1
-    !    if (locA1 > maxa(locl)) then
-    !        locl = locl+1
-    !        locA1=1
-    !    end if
-    !    do y=1,grids%supportSPA(ixt)
-    !        GrossUtil(d,y) = const(locl,locA1,y)*(dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d-1)*grids%supportSPA(ixt)+1:d*grids%supportSPA(ixt))))
-    !    end do
-    !end do
-    !
-    !do d=1,dimD
-    !    do y=1,grids%supportSPA(ixt)
-    !        res((d-1)*grids%supportSPA(ixt)+y) = GrossUtil(d,y) / sum((GrossUtil(:,y)))
-    !    end do
-    !end do
-    !
-    !end function
-    !!Jacoben
-    !FUNCTION Jacob(p)
-    !USE header
-    !IMPLICIT NONE
-    !REAL(kind=rk), DIMENSION(:), INTENT(IN) :: p
-    !REAL(kind=rk), DIMENSION(size(p),size(p)) :: Jacob
-    !
-    !real(kind=rk) :: l1, l2 ,l3, l4
-    !integer :: row, column
-    !
-    !integer :: d1, y1, d2, y2, locl, locA1
-    !!shouldn't do this twice
-    !locl =1
-    !locA1 = 0
-    !do d1=1,dimD
-    !    locA1 = locA1 + 1
-    !    if (locA1 > maxa(locl)) then
-    !        locl = locl+1
-    !        locA1=1
-    !    end if
-    !    do y1=1,grids%supportSPA(ixt)
-    !        GrossUtil(d1,y1) = const(locl,locA1,y1)*&
-    !            (dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d1-1)*grids%supportSPA(ixt)+1:d1*grids%supportSPA(ixt))))
-    !    end do
-    !end do
-    !locl =1
-    !locA1 = 0
-    !do d1=1,dimD
-    !    locA1 = locA1 + 1
-    !    if (locA1 > maxa(locl)) then
-    !        locl = locl+1
-    !        locA1=1
-    !    end if
-    !    do y1=1,grids%supportSPA(ixt)
-    !        do d2=1,dimD
-    !            do y2=1,grids%supportSPA(ixt)
-    !                row = (d1-1)*grids%supportSPA(ixt)+y1
-    !                column = (d2-1)*grids%supportSPA(ixt)+y2
-    !                !locl=(d1-1)/(maxmaxA)+1
-    !                !locA1=mod(d1-1,maxmaxA)+1
-    !                l1= sum(const(locl,locA1,:))
-    !                l2 = dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d1-1)*grids%supportSPA(ixt)+1:d1*grids%supportSPA(ixt)))
-    !                l3 = sum(GrossUtil(d1,:))
-    !                l4 = l3**2
-    !                jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2) = &
-    !                    (-sum(const(locl,locA1,:))*dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d1-1)* &
-    !                    grids%supportSPA(ixt)+1:d1*grids%supportSPA(ixt)))/(sum(GrossUtil(y1,:)))**2)
-    !                if (d1==d2) then
-    !                    jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2) = jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2) + &
-    !                        + 1 /(sum(GrossUtil(y1,:)))
-    !                end if
-    !                jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2)= const(locl,locA1,y1)*grids%posteriorSPA(ixt,numPointsSPA-y2+1)* &
-    !                    jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2)
-    !            end do
-    !        end do
-    !    end do
-    !end do
-    !
-    !END FUNCTION Jacob
+    !!!function
+    !!function func(p) result(res)
+    !!use Header
+    !!implicit none
+    !!!input
+    !!real(kind=rk), intent(in) :: p(:)
+    !!!output
+    !!real(kind=rk), allocatable :: res(:)
+    !!!local
+    !!real(kind=hp) :: systemEq(dim),test(dim), loc!,grids%supportSPA(ixt)
+    !!integer:: d, y, locl, loca1, j
+    !!
+    !!allocate(res(dim))
+    !!locl =1
+    !!locA1 = 0
+    !!do d=1,dimD
+    !!    locA1 = locA1 + 1
+    !!    if (locA1 > maxa(locl)) then
+    !!        locl = locl+1
+    !!        locA1=1
+    !!    end if
+    !!    do y=1,grids%supportSPA(ixt)
+    !!        GrossUtil(d,y) = const(locl,locA1,y)*(dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d-1)*grids%supportSPA(ixt)+1:d*grids%supportSPA(ixt))))
+    !!    end do
+    !!end do
+    !!
+    !!do d=1,dimD
+    !!    do y=1,grids%supportSPA(ixt)
+    !!        res((d-1)*grids%supportSPA(ixt)+y) = GrossUtil(d,y) / sum((GrossUtil(:,y)))
+    !!    end do
+    !!end do
+    !!
+    !!end function
+    !!!Jacoben
+    !!FUNCTION Jacob(p)
+    !!USE header
+    !!IMPLICIT NONE
+    !!REAL(kind=rk), DIMENSION(:), INTENT(IN) :: p
+    !!REAL(kind=rk), DIMENSION(size(p),size(p)) :: Jacob
+    !!
+    !!real(kind=rk) :: l1, l2 ,l3, l4
+    !!integer :: row, column
+    !!
+    !!integer :: d1, y1, d2, y2, locl, locA1
+    !!!shouldn't do this twice
+    !!locl =1
+    !!locA1 = 0
+    !!do d1=1,dimD
+    !!    locA1 = locA1 + 1
+    !!    if (locA1 > maxa(locl)) then
+    !!        locl = locl+1
+    !!        locA1=1
+    !!    end if
+    !!    do y1=1,grids%supportSPA(ixt)
+    !!        GrossUtil(d1,y1) = const(locl,locA1,y1)*&
+    !!            (dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d1-1)*grids%supportSPA(ixt)+1:d1*grids%supportSPA(ixt))))
+    !!    end do
+    !!end do
+    !!locl =1
+    !!locA1 = 0
+    !!do d1=1,dimD
+    !!    locA1 = locA1 + 1
+    !!    if (locA1 > maxa(locl)) then
+    !!        locl = locl+1
+    !!        locA1=1
+    !!    end if
+    !!    do y1=1,grids%supportSPA(ixt)
+    !!        do d2=1,dimD
+    !!            do y2=1,grids%supportSPA(ixt)
+    !!                row = (d1-1)*grids%supportSPA(ixt)+y1
+    !!                column = (d2-1)*grids%supportSPA(ixt)+y2
+    !!                !locl=(d1-1)/(maxmaxA)+1
+    !!                !locA1=mod(d1-1,maxmaxA)+1
+    !!                l1= sum(const(locl,locA1,:))
+    !!                l2 = dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d1-1)*grids%supportSPA(ixt)+1:d1*grids%supportSPA(ixt)))
+    !!                l3 = sum(GrossUtil(d1,:))
+    !!                l4 = l3**2
+    !!                jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2) = &
+    !!                    (-sum(const(locl,locA1,:))*dot_product(grids%posteriorSPA(ixt,numPointsSPA-grids%supportSPA(ixt)+1:numPointsSPA),p((d1-1)* &
+    !!                    grids%supportSPA(ixt)+1:d1*grids%supportSPA(ixt)))/(sum(GrossUtil(y1,:)))**2)
+    !!                if (d1==d2) then
+    !!                    jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2) = jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2) + &
+    !!                        + 1 /(sum(GrossUtil(y1,:)))
+    !!                end if
+    !!                jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2)= const(locl,locA1,y1)*grids%posteriorSPA(ixt,numPointsSPA-y2+1)* &
+    !!                    jacob((d1-1)*grids%supportSPA(ixt)+y1,(d2-1)*grids%supportSPA(ixt)+y2)
+    !!            end do
+    !!        end do
+    !!    end do
+    !!end do
+    !!
+    !!END FUNCTION Jacob
     !
     !FUNCTION funcv(x)
     !USE header
@@ -2836,6 +3761,7 @@
     !!funcv = x - func(x)
     !END FUNCTION funcv
     !end subroutine
+
 
 
     !!-----------------------------------------------------------------------------------------------------------!
@@ -3093,12 +4019,12 @@
 
     !local
     !REAL(kind=rk) :: temp(85),  temp2(86), temp3(numSims, Tperiods)
-    integer :: ios, I
+    integer :: ios, I, j, ALLOC_ERR, k
     real (kind=rk) ::   conditioningProb, sig_inc !sig_initial,
     real (kind=rk) :: e(Tperiods, numSims)   ! the innovations to log income
     real (kind=rk) :: logy1(1,numSims)        ! draws for initial income
     real (kind=rk) :: ly(Tperiods, numSims)           ! log income
-    integer :: s, t,  workAge
+    integer :: s, t,  workAge, ix
     real (kind=rk) ::  uniformRand(Tperiods,numSims), workArea(8), spIncprm(3,5)
     !INTEGER, DIMENSION(:), ALLOCATABLE :: seed
     integer ::  n, productiv(1), typeSim, startN, endN, samples !requiredl,seedIn,finish,
@@ -3108,6 +4034,9 @@
     character (100) :: tempC
     !integer, allocatable :: rangeSims(:)
     real (kind=rk) :: mortalmen(Tperiods)
+    real (kind=rk), allocatable :: ida(:)
+    logical :: mtc
+    integer :: temp , m
 
     open (unit = 1001,file=trim(pathMoments)//'InitialAssets.txt', action='read', IOSTAT = ios)
     read (1001, *,  IOSTAT = ios) grids%initialAssets
@@ -3208,7 +4137,7 @@
     params%mu = 0
     params%r= 0.04
     params%tol = 1e-10
-    params%minCons =  50.0 !1e-5 !
+    params%minCons =  600.00 !200.00! 50.0 !1e-5 !
     params%percentCons = 0.0 !0.1
     params%mu = 0
     params%hrsWrk = real(weeksWorking,rk)/52.0*(40.0/(16.0*7)) ! 0.3159
@@ -3350,6 +4279,128 @@
 
     call RANDOM_NUMBER(grids%logitShock)
 
+    if (sizeDimSPA == 999) then
+        grids%beliefStore(1)%sizePost = choose(numPointsSPA - 1 + numPointsPost,numPointsPost)
+        allocate ( ida(numPointsSPA - 1 + numPointsPost) ,STAT = ALLOC_ERR )
+        allocate (  grids%beliefStore(1)%storePost(grids%beliefStore(1)%sizePost,numPointsSPA - 1 + numPointsPost), STAT = ALLOC_ERR)
+        allocate ( grids%beliefStore(1)%distMean(grids%beliefStore(1)%sizePost) )
+        !allocate ( grids%beliefStore(1)%storePostBin(grids%beliefStore(1)%sizePost))
+        grids%beliefStore(1)%storePost = 0.0
+
+        ida = probBlock
+        do i  =  1, numPointsSPA - 1
+            ida(i) = 0
+        enddo
+
+        i = 0
+        do
+            i = i + 1
+            grids%beliefStore(1)%storePost(i,:) = ida
+            grids%beliefStore(1)%distMean(i) = 0.0
+            grids%beliefStore(1)%storePostBin(i) = 0
+            k= 1
+            do j =1, numPointsSPA - 1 + numPointsPost
+                grids%beliefStore(1)%storePostBin(i) = grids%beliefStore(1)%storePostBin(i) + (ida(j)/probBlock)*10_li**(j-1)
+                if (ida(j) <= 0.0)    then
+                    k = k +1
+                else
+                    grids%beliefStore(1)%distMean(i) =  grids%beliefStore(1)%distMean (i)+ k * probBlock
+                end if
+            end do
+            !write(*,*) grids%beliefStore(1)%distMean(i)
+            call nextLex(ida, mtc)
+
+            if ( .not. mtc) then
+                cycle
+            else
+                exit
+            endif
+        end do
+
+        ida = probBlock
+        do i  =  1, numPointsSPA - 1
+            ida(i) = 0
+        enddo
+
+        !i = 0
+        !do i = 1, grids%beliefStore(1)%sizePost
+        !    temp = 0
+        !    do j =1, numPointsSPA - 1 + numPointsPost
+        !        temp = temp + ida(j)*10**j
+        !    end do
+        !    write(*,*) FINDLOC ( grids%beliefStore(1)%storePostBin , temp )
+        !
+        !    call nextLex(ida, mtc)
+        !
+        !    if ( .not. mtc) then
+        !        cycle
+        !    else
+        !        exit
+        !    endif
+        !end do
+        !stop
+
+
+        do j = 2, Tretire - 1
+            allocate ( grids%beliefStore(j)%storePost(grids%beliefStore(1)%sizePost,numPointsSPA - 1 + numPointsPost))
+            !allocate ( grids%beliefStore(j)%storePostBin(grids%beliefStore(1)%sizePost))
+            grids%beliefStore(j)%sizePost = grids%beliefStore(1)%sizePost
+            grids%beliefStore(j)%storePost = grids%beliefStore(1)%storePost
+            grids%beliefStore(j)%storePostBin = grids%beliefStore(1)%storePostBin
+            grids%beliefStore(j)%distMean = grids%beliefStore(1)%distMean
+        end do
+
+        deallocate ( ida )
+
+        do j = Tretire, EndPeriodRI - 2
+            grids%beliefStore(j)%sizePost = choose(numPointsSPA - 1 + numPointsPost   - (j-Tretire+1),numPointsPost)
+            allocate ( ida(numPointsSPA - 1 + numPointsPost - (j-Tretire+1)) )
+            allocate ( grids%beliefStore(j)%storePost(grids%beliefStore(j)%sizePost,numPointsSPA - 1 + numPointsPost  - (j-Tretire+1)))
+            allocate ( grids%beliefStore(j)%distMean(grids%beliefStore(j)%sizePost) )
+            !allocate ( grids%beliefStore(j)%storePostBin(grids%beliefStore(j)%sizePost))
+            grids%beliefStore(j)%storePost = 0.0
+
+            ida =  probBlock
+            do i  =  1, numPointsSPA - 1  - (j-Tretire+1)
+                ida(i) = 0
+            enddo
+
+            i = 0
+            do
+                i = i + 1
+                grids%beliefStore(j)%storePost(i,:) = ida
+                m = 1
+                grids%beliefStore(j)%distMean(i) = 0.0
+                grids%beliefStore(j)%storePostBin(i) = 0
+                do k =1, numPointsSPA - 1 + numPointsPost - (j-Tretire+1)
+                    grids%beliefStore(j)%storePostBin(i) = grids%beliefStore(j)%storePostBin(i) + (ida(k)/probBlock)*10_li**(k-1)
+                    if (ida(k) <= 0.0)    then
+                        m = m +1
+                    else
+                        grids%beliefStore(j)%distMean(i) =  grids%beliefStore(j)%distMean(i)+ m * probBlock
+                    end if
+
+                end do
+                !write (*,*) j, grids%beliefStore(j)%distMean(i)
+                call nextLex(ida, mtc)
+                if ( .not. mtc) then
+                    cycle
+                else
+                    exit
+                endif
+            end do
+            deallocate ( ida )
+        end do
+
+        !do ix=1,grids%beliefStore(17)%sizePost
+        !    write(*,*) sum(grids%beliefStore(17)%storePost(ix,:))
+        !    !write(*,*) "Post", ix, grids%beliefStore(17)%storePost(ix,:)
+        !end do
+
+        grids%beliefStore(TendRI-1)%sizePost = 1
+    else
+        grids%beliefStore(1)%sizePost = sizeDimSPA
+    end if
     end subroutine
 
     !!-----------------------------------------------------------------------------------------------------------!
@@ -3393,7 +4444,7 @@
     type (structparamstype), intent(in) :: params
     type (gridsType), intent(in) :: grids
     integer, intent(in) :: ixt,typeSim,ixa,ixAIME,ixl,ixy, spa
-    real (kind=rk), intent(in) :: EV(:,:)
+    real (kind=sp), intent(in) :: EV(:,:)
 
     !output
     real(kind=rk), intent(out) :: negV
@@ -3735,6 +4786,11 @@
     !end do
     !
     !end function
+    !!-----------------------------------------------------------------------------------------------------------!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !Solve outer loop is redundant
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!-----------------------------------------------------------------------------------------------------------!
     subroutine solveOuterLoop(params, grids )
     implicit none
 #ifdef mpiBuild
@@ -3742,7 +4798,6 @@
 #endif     
     type (structparamstype) :: params
     type (gridsType) :: grids
-
 
     !local
     logical :: delCache
@@ -3760,8 +4815,6 @@
     real (kind=rk) ::post(7,numSims), prior(7,numSims,2), beta(2,1)
     logical :: mask(7,numSims)
 
-
-
     if (recal) call solveValueFunction( params, grids, .TRUE., .TRUE. )
     !simulate
 #ifdef mpiBuild
@@ -3772,7 +4825,9 @@
         !delCache = .FALSE.
         !if (modelChoice>1) then
         !if (counterFact) then
+
         call simWithUncer(params, grids, grids%Simy, cpath, apath,  lpath, ypath, AIME, 1, .FALSE. , error, pos, prio) !5 vpath,
+
         !post = pos(:,:,1) + 59.0
         !prior(:,:,2) = 1.0
         !prior(:,:,1) = prio(:,:,1) + 59.0
@@ -3809,12 +4864,87 @@
         !    call writetofileByType(grids,params,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
         !end if
     end if
-    do while (error > 1.0d-9)
-        if (recal) call solveValueFunction( params, grids, .false., .TRUE. )
-        call simWithUncer(params, grids, grids%Simy, cpath, apath,  lpath, ypath, AIME, 1, .FALSE. , error ) !5 vpath,
-        write(*,*) "error = ", error
-    end do
+    !do while (error > 1.0d-9)
+    !    if (recal) call solveValueFunction( params, grids, .false., .TRUE. )
+    !    call simWithUncer(params, grids, grids%Simy, cpath, apath,  lpath, ypath, AIME, 1, .FALSE. , error ) !5 vpath,
+    !    write(*,*) "error = ", error
+    !end do
 
     end subroutine
+    !!-----------------------------------------------------------------------------------------------------------!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !Find nearests prob on grid
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!-----------------------------------------------------------------------------------------------------------!
+    subroutine nearestDistLoc(grids,posterior,ixt,postPos)
+    implicit none
+
+    !inputs
+    type(gridsType), intent(in) :: grids
+    real(kind=rk), intent(inout) :: posterior(:)
+    integer :: ixt
+    !output
+    integer, intent(out) :: postpos(1)
+
+    !local
+    real(kind=rk) :: lb(grids%supportSPA(ixt)), diff(grids%supportSPA(ixt)), rem,  priorLoc(grids%supportSPA(ixt)), temp
+    integer :: i,j ,k, ix(1), expo,   tempInt
+    integer(kind=li) :: bindist, start
+    real(kind=rk), parameter :: tol=1D-6
+
+    if (ixt+1>=Tretire) then
+        start = 2
+    else
+        start = 1
+    end if
+
+    lb = 0.0
+    do j = 1, grids%supportSPA(ixt)
+        !write(*,*) 'j', j
+        !temp = (10.0*posterior(j))
+        !tempInt = floor(temp+tol)
+        lb(j) =   floor(numPointsPost*posterior(j)+tol)/real(numPointsPost,rk)
+        if (lb(j) < 0) then
+            write(*,*) 'break'
+        end if
+        !write(*,*)  CEILING(10*posterior(i,j))/10.0
+    end do
+    diff = posterior - lb
+    rem = 1.0 - sum(lb)
+    posterior = lb
+    do while (rem > tol)
+        ix = maxloc(diff)
+        !posterior(i,ix(1)) = lb(ix(1)) + 0.1
+
+        !rem = 1.0 - sum(lb)
+        !do ix = 2,3
+
+        posterior(ix(1)) = posterior(ix(1)) + probBlock
+        !postDis(i,ix-1) = diff(ix)
+        diff(ix(1)) = 0.0 ! posterior(i,:) - lb
+        rem = rem - probBlock
+    end do
+    if (abs(sum(posterior))-1.0>0.0001) then
+        write(*,*) 'break'
+    end if
+    expo = 0
+    bindist = 0
+    !write(*,*) huge(bindist)
+    do j =start,grids%supportSPA(ixt)
+        do k=1,floor(numPointsPost*posterior(j)+tol)
+            bindist = bindist + 10_li**expo
+            expo = expo + 1
+        end do
+        expo = expo + 1
+    end do
+
+    !postPos(i,ix-1,:) = FINDLOC ( grids%beliefStore(ixt+1)%storePostBin , bindist )
+    postPos = FINDLOC ( grids%beliefStore(ixt+1)%storePostBin , bindist )
+
+    if (postPos(1) <= 0 ) then
+        write(*,*) 'break'
+    end if !.OR. postPos(i,1)>
+
+    end subroutine nearestDistLoc
     end module routines
 
