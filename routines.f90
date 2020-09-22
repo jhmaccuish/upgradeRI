@@ -283,6 +283,8 @@
             mutualInfo = 0.0
             signal = 0.0
             totalP = 0.0
+            minSPA = maxval((/ixt-Tretire+2,1/))
+            !$OMP PARALLEL DEFAULT( SHARED ) PRIVATE(EV1, EV2, ixl, ixA1, va, spa, EV1SPA)
             do ixAIME = 1, dimVal(ixt,2)
                 do ixA = 1, dimVal(ixt,1)                   ! points on asset grid
 
@@ -297,6 +299,7 @@
                             !earning potential
                             ! STEP 1. solve problem at grid points in assets, income + labour choices
                             ! ---------------------------------------------------------
+                            !$OMP DO
                             do ixY = 1, dimVal(ixt,5)               ! points on income grid
                                 if (ixt >= EndPeriodRI) then
                                     allocate(modelObjects%policy(ixA,ixAIME, 1, 1,ixY)%coo(1) )
@@ -313,7 +316,6 @@
                                     !end if
                                 else
                                     if (uncerRE) then
-                                        minSPA = maxval((/ixt-Tretire+2,1/))
                                         if (ixt + 1 < EndPeriodRI ) then
                                             EV2 =  contEV(:,:,1,numPointsSPA,ixY)
                                         else
@@ -384,35 +386,11 @@
                                             !do ixPost = 1, dimVal(ixt,3)
                                             EV1SPA  = contEV(:,:,:,:,ixY)  ! relevant section of EV matrix (in assets tomorrow)
                                             !Set SPA to be TendRI as just need something greater than current age
-                                            minSPA = maxval((/ixt-Tretire+2,1/))
-                                            mat=0.0
-                                            if (ixa == 30 .and. ixaime == 6 .and. ixy == 10) then
-                                                continue
-                                            end if
-                                            !modelObjects%policy(ixA,ixAIME, :, minSPA:numPointsSPA,ixY)
+                                            !minSPA = maxval((/ixt-Tretire+2,1/))
+                                            !mat=0.0
 
                                             call solvePeriodRI(params, grids, ixy, ixA, ixAIME ,ixt,typeSim,TendRI, EV1SPA, &
                                                 modelObjects%policy(ixA,ixAIME, :, minSPA:numPointsSPA,ixY) ,modelObjects%V(ixA, ixAIME,:,minSPA:numPointsSPA,ixY), q, uConst )
-
-                                            !do ixpost = 1, dimval(ixt,3)
-                                            !    do k = 1, grids%supportSPA(ixt)
-                                            !        policyout(ixA,ixAIME, ixpost, minSPA-1+k,ixY)%coo = policy(ixpost,k)%coo
-                                            !    end do
-                                            !end do
-
-                                            !modelObjects%policy(ixA,ixAIME, ixPost, :,ixY,:,:) = mat
-                                            !modelObjects%q(ixA,ixAIME, ixY,:,:) = q
-                                            !modelObjects%u(ixA,ixAIME, :,ixY,:,:) = uConst
-                                            !end do
-                                            !if (ixy==5 .AND. ixa ==6 .AND. ixAIME==1) then
-                                            !    call solvePeriodRE(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, TendRI, EV1SPA(:,:,numPointsSPA), ixA1,ixl,Va)
-                                            !    check = sum(mat(numPointsSPA,2,:))!sum(modelObjects%policy(ixt,typeSim,ixA,ixAIME, 11,ixY,:,:))
-                                            !    write (*,*) check, ixl
-                                            !end if
-                                            !call solvePeriodRE(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, TendRI, EV1SPA(:,:,numPointsSPA), ixA1,ixl,Va)
-                                            !checkA = sum(mat(numPointsSPA,:,:),1)
-                                            !!check2 = sum(mat(numPointsSPA-1,2,:))!sum(modelObjects%policy(ixt,typeSim,ixA,ixAIME, 11,ixY,:,:))
-                                            !!checkA2 = sum(mat(numPointsSPA-1,:,:),1)
 
                                             if (ixt>=Tretire) then
                                                 do spa = 1,ixt-Tretire+1
@@ -436,33 +414,11 @@
                                                 modelObjects%V(ixA, ixAIME,:,(/(spa,spa=1,ixt-Tretire+1)/), ixY) = Va
                                             end if
 
-                                            !do ixFlag = 1, dimVal(ixt,4)
-                                            !    if (ixFlag == flgRcvd) then
-                                            !        !solve once with SPA = current period
-                                            !        !I know SPA and recieve it so continaution value is the same for all possible spa < ixt
-                                            !        EV1  = contEV(:,:,1,flgRcvd,ixY)! relevant section of EV matrix (in assets tomorrow)
-                                            !        call solvePeriodRE(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, ixt, EV1, ixA1,ixl,Va)
-                                            !        modelObjects%policy(ixA,ixAIME, (/(spa,spa=1,ixt-Tretire+1)/), 1,ixY,ixl,ixA1) = 1.0
-                                            !        ! modelObjects%q(ixA,ixAIME, ixY,ixl,ixA1) = 1.0
-                                            !        modelObjects%V(ixA, ixAIME,(/(spa,spa=1,ixt-Tretire+1)/), 1,ixY) = Va
-                                            !    else
-                                            !        do ixPost = 1, dimVal(ixt,3)
-                                            !            EV1SPA  = contEV(:,:,:,:,ixY)  ! relevant section of EV matrix (in assets tomorrow)
-                                            !            !Set SPA to be TendRI as just need something greater than current age
-                                            !            minSPA = maxval((/ixt-Tretire+2,1/))
-                                            !            mat=0.0
-                                            !            call solvePeriodRI(params, grids, ixy, ixA, ixAIME ,ixt,typeSim, TendRI, EV1SPA, &
-                                            !                modelObjects%policy(ixA,ixAIME, :, 1,ixY,:,:),modelObjects%V(ixA, ixAIME,minSPA:numPointsSPA, 1,ixY), q, uConst )
-                                            !            !modelObjects%policy(ixA,ixAIME, :,ixY,:,:) = mat
-                                            !            modelObjects%q(ixA,ixAIME, ixY,:,:) = q
-                                            !            modelObjects%u(ixA,ixAIME, :,ixY,:,:) = uConst
-                                            !        end do
-                                            !    end if
-                                            !end do
                                         end if
                                     end if
                                 end if
                             end do
+                            !$OMP END DO
                         else
                             !Can't work at this stage and you are past any possible SPA so pass in arbitrary value for ixy (= 1) and SPA9=60) and
                             !hardcode ixl=0(not work)
@@ -584,6 +540,7 @@
             call mpi_barrier(mpi_comm_world, ierror)
             if (ierror.ne.0) stop 'mpi problem180'
 #endif  
+            !$OMP END PARALLEL
             deallocate(contEV)
             if (ixt > 1 ) then
                 allocate(contEV(dimVal(ixt,1), dimVal(ixt,2), dimVal(ixt,3),dimVal(ixt,4),dimVal(ixt,5)))
@@ -593,26 +550,6 @@
             if (show .AND. rank==0) WRITE(*,*)  'Passed period ', ixt, ' of ',  Tperiods
 
             if (rank==0) then
-                !do ixAIME = 1, dimVal(ixt,2)
-
-
-                !if (ixt==17) then
-                !    do ixAIME = 1, dimVal(ixt,2)
-                !        do ixA = 1, dimVal(ixt,1)                   ! points on asset grid
-                !            do ixY = 1, dimVal(ixt,5)               ! points on income grid
-                !                do SPA = 1,numpointsSPA
-                !                    do ixpost = 1, dimVal(ixt,3)
-                !                        if (size(modelObjects%policy(ixa,ixaime,ixpost,spa,ixy)%coo)<1) then
-                !                            write(*,*) 'Break!!!'
-                !
-                !                        end if
-                !                    end do
-                !                end do
-                !            end do
-                !        end do
-                !    end do
-                !end if
-
                 write (temp1,'(I1)') typeSim
                 write (temp2,'(I2)') ixt
                 !write (outFile, *), trim(trim(pathDataStore) // "polType"),trim(adjustl(temp1)),trim("Period"),trim(adjustl(temp2)),".txt"
@@ -636,183 +573,9 @@
                     end do
                 end do
                 close( unit=201)
-                !end do
-
-                !if (ixt == 1) then
-                !    allocate(modelObjects2%policy(dimPol(ixt,1), dimPol(ixt,2), dimPol(ixt,3),dimPol(ixt,4),dimPol(ixt,5)))
-                !    open (unit=201,form="unformatted", file=outfile, status='unknown', action='read') !ACCESS='stream',
-                !    read (201) modelObjects2%policy
-                !    close( unit=201 )
-                !    deallocate(modelObjects2%policy)
-                !
-                !end if
-                !write (outFile, *), trim(trim(pathDataStore) // "EVType"),typeSim,trim("Period"),ixt,".txt"
-                !outfile=ADJUSTL(outfile)
-                !inquire (iolength=requiredl)  modelObjects%EV
-                !open (unit=201,form="unformatted", file=outfile, status='unknown',recl=requiredl, action='write')
-                !write (201)  modelObjects%EV
-                !close( unit=201)
-                !
-                !write (outFile, *), trim(trim(pathDataStore) // "qType"),typeSim,trim("Period"),ixt,".txt"
-                !outfile=ADJUSTL(outfile)
-                !inquire (iolength=requiredl)  modelObjects%q
-                !open (unit=201,form="unformatted", file=outfile, status='unknown',recl=requiredl, action='write')
-                !write (201)  modelObjects%q
-                !close( unit=201)
-                !
-                !write (outFile, *), trim(trim(pathDataStore) // "uType"),typeSim,trim("Period"),ixt,".txt"
-                !outfile=ADJUSTL(outfile)
-                !inquire (iolength=requiredl)  modelObjects%u
-                !open (unit=201,form="unformatted", file=outfile, status='unknown',recl=requiredl, action='write')
-                !write (201)  modelObjects%u
-                !close( unit=201)
-
-                if (ixt < stopwrok .AND. intermediateToFile) then
-                    !    write (format_numpeepcols_int,*),'(',numPointsY
-                    !    format_numpeepcols_int = trim(format_numpeepcols_int) // 'E20.7E4)'
-                    !    select case(modelChoice)
-                    !    case(1)
-                    !        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\tempBaseline\"
-                    !    case(2)
-                    !        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\tempRE\"
-                    !        case default
-                    !        path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\temp\"
-                    !    end select
-                    !
-                    !    EVPath(ixt) = sum(modelObjects%EV(:,:, 11,:))
-                    !
-                    !    do spa = 1, numPointsSPA
-                    !        !Policy L
-                    !        poilcyL1 = sum(modelObjects%policy(:,4, spa,:,2,:),3)
-                    !        write (outFile, *), trim(trim(path) // "policyL"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
-                    !        outfile=ADJUSTL(outfile)
-                    !        inquire (iolength=requiredl)  transpose(poilcyL1)
-                    !        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                    !        write (201,format_numpeepcols_int)  transpose(poilcyL1)
-                    !        close( unit=201)
-                    !
-                    !        !Policy A
-                    !        do i =1, numpointsA !grids%Agrid(typesim,1,:))
-                    !            do j=1,numpointsY
-                    !                poilcyA1(i,j) = dot_product(sum(modelObjects%policy(i,4, spa,j,:,:),1),grids%Agrid(typesim,1,:))
-                    !                if (poilcyL1(i,j) > 0) then
-                    !                    poilcyA1wrk(i,j) = dot_product(modelObjects%policy(i,4, spa,j,2,:)/poilcyL1(i,j),grids%Agrid(typesim,1,:))
-                    !                else
-                    !                    poilcyA1wrk(i,j) = 0.0
-                    !                end if
-                    !                if (poilcyL1(i,j) <1) then
-                    !                    poilcyA1dnt(i,j) = dot_product(modelObjects%policy(i,4, spa,j,1,:)/(1-poilcyL1(i,j)),grids%Agrid(typesim,1,:))
-                    !                else
-                    !                    poilcyA1dnt(i,j) = 0.0
-                    !                end if
-                    !                if (abs(poilcyA1(i,j) - ((1-poilcyL1(i,j))*poilcyA1dnt(i,j)+poilcyL1(i,j)*poilcyA1wrk(i,j)))>1.0) then
-                    !                    write (*,*) "Prob error"
-                    !                    stop
-                    !                end if
-                    !            end do
-                    !        end do
-                    !        write (outFile, *), trim(trim(path) // "policyA"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
-                    !        outfile=ADJUSTL(outfile)
-                    !        inquire (iolength=requiredl)  transpose(poilcyA1)
-                    !        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                    !        write (201,format_numpeepcols_int)  transpose(poilcyA1)
-                    !        close( unit=201)
-                    !
-                    !        write (outFile, *), trim(trim(path) // "policyAwrk"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
-                    !        outfile=ADJUSTL(outfile)
-                    !        inquire (iolength=requiredl)  transpose(poilcyA1wrk)
-                    !        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                    !        write (201,format_numpeepcols_int)  transpose(poilcyA1wrk)
-                    !        close( unit=201)
-                    !
-                    !        write (outFile, *), trim(trim(path) // "policyAdnt"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
-                    !        outfile=ADJUSTL(outfile)
-                    !        inquire (iolength=requiredl)  transpose(poilcyA1dnt)
-                    !        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                    !        write (201,format_numpeepcols_int)  transpose(poilcyA1dnt)
-                    !        close( unit=201)
-                    !
-                    !        !Value
-                    !        val1 = modelObjects%v(:,4, spa,:)
-                    !        write (outFile, *), trim(trim(path) // "Val"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
-                    !        outfile=ADJUSTL(outfile)
-                    !        inquire (iolength=requiredl)  transpose(val1 )
-                    !        open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                    !        write (201,format_numpeepcols_int)  transpose(val1 )
-                    !        close( unit=201)
-                    !
-                    !        !Value
-                    !        !val1 = modelObjects%ev(:,4, spa,:)
-                    !        !write (outFile, *), trim(trim(path) // "EVal"),typeSim,trim("Period"),ixt,trim("SPA"),Tretire+startAge-2+spa,".txt"
-                    !        !outfile=ADJUSTL(outfile)
-                    !        !inquire (iolength=requiredl)  transpose(val1 )
-                    !        !open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                    !        !write (201,format_numpeepcols_int)  transpose(val1 )
-                    !        !close( unit=201)
-                    !
-                    !
-                    !        if ( modelChoice==3 .AND. ixt <TendRI-1) then
-                    !            FORALL(I = 1:numpointsA, J = 1:numpointsY) signal(spa,i,j) =  entropy(real(reshape(modelObjects%policy(i,4, spa,j,:,:),(/numpointsA*numPointsL/)),hp))
-                    !            FORALL(I = 1:numpointsA, J = 1:numpointsY) totalP(i,j,:) = totalP(i,j,:) + grids%posteriorSPA(ixt,spa)*reshape(modelObjects%policy(i,4, spa,j,:,:),(/numpointsA*numPointsL/))
-                    !
-                    !            if (ixt==8 ) then
-                    !
-                    !                write (outFile, *), trim("C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\Entropy\Pol"),trim("SPA"),Tretire+startAge-2+spa,".txt"
-                    !                outfile=ADJUSTL(outfile)
-                    !                inquire (iolength=requiredl)  modelObjects%policy(5,4, spa,5,:,:)
-                    !                open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                    !                write (201,*)  modelObjects%policy(5,4, spa,5,:,:)
-                    !                close( unit=201)
-                    !
-                    !            end if
-                    !        end if
-                    !    end do
-                end if
-                if ( modelChoice==3 .AND. ixt <TendRI-1 .AND. intermediateToFile) then
-                    !FORALL(I = 1:numpointsA, J = 1:numpointsY)  mutualInfo(i,j) = entropy( totalP(i,j,:)) - dot_product(grids%posteriorSPA(ixt,:),signal(:,i,j))
-                    !if (minval(mutualInfo) < -1.0E-16 ) then
-                    !    testSUM(1) = sum(grids%posteriorSPA(ixt,:))
-                    !    testSUM(2) = sum(modelObjects%policy(8,4, 11,1,:,:))
-                    !    testSUM(3) = sum(modelObjects%policy(8,4, 10,1,:,:))
-                    !    testSUM(4) = sum(modelObjects%policy(8,4, 9,1,:,:))
-                    !    testSUM(5) = sum(totalP(8,1,:))
-                    !    FORALL(I = 1:numpointsA, J = 1:numpointsY)  ent(i,j) = entropy( totalP(i,j,:))
-                    !    write (*,*) "Neg. mutaul info!", minval(mutualInfo)
-                    !end if
-                    !write (outFile, *), trim(trim(path) // "MutualInfo"),typeSim,trim("Period"),ixt,".txt"
-                    !outfile=ADJUSTL(outfile)
-                    !inquire (iolength=requiredl)  transpose(mutualInfo )
-                    !open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                    !write (201,format_numpeepcols_int)  transpose(mutualInfo )
-                    !close( unit=201)
-                end if
             end if
-
-
-            if (rank==0 .AND. intermediateToFile .AND. ixt <10) then
-                !!L
-                !write (outFile, *), trim("..\\temp\polL"),ixt,".txt"
-                !!check = sum(mat(numPointsSPA,2,:))!sum(modelObjects%policy(ixt,typeSim,ixA,ixAIME, 11,ixY,:,:))
-                !outfile=ADJUSTL(outfile)
-                !inquire (iolength=requiredl) tempL
-                !open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                !write (201, *) tempL
-                !close( unit=201)
-                !
-                !write (outFile, *), trim("..\\temp\polA"),ixt,".txt"
-                !!check = sum(mat(numPointsSPA,2,:))!sum(modelObjects%policy(ixt,typeSim,ixA,ixAIME, 11,ixY,:,:))
-                !outfile=ADJUSTL(outfile)
-                !inquire (iolength=requiredl) tempA
-                !open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-                !write (201, *) tempA
-                !close( unit=201)
-
-            end if
-
-            !if (ixt == EndPeriodRI-1  .AND. .NOT. uncerRE) then
-            !    deallocate( modelObjects%policy, modelObjects%V )
-            !end if
-
+            
+            
             deallocate(modelObjects%EV, modelObjects%policy,modelObjects%V) !modelObjects%q, modelObjects%u, policySL
             if (ixt <= TendRI-2 .AND. model == 3) then
                 deallocate(EV1SPA)
@@ -820,15 +583,7 @@
             !if (ixt<Tperiods) deallocate()
 
         end do !ixt
-
-        if (rank==0 .AND. intermediateToFile) then
-            !write (outFile, *), trim(trim(path) // "EVpath"),typeSim,".txt"
-            !outfile=ADJUSTL(outfile)
-            !inquire (iolength=requiredl) Evpath
-            !open (unit=201, file=outfile, status='unknown',recl=requiredl, action='write')
-            !write (201,'(F20.10)')  EVpath
-            !close( unit=201)
-        end if
+        
     end do !type
 #ifdef mpiBuild
     call mpi_barrier(mpi_comm_world, ierror)
@@ -2845,7 +2600,7 @@
                     end if
                     if (counter >= 100) then
                         Write(*,*) "Long run 1", counter
-                        !errorouter = 0.0
+                        errorouter = 0.0
                     end if
                 end if
 

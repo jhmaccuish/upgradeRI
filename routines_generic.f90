@@ -1933,8 +1933,6 @@
     ENDIF
     iter=0
     psum(:)=sum(p(:,:),dim=1)
-    !!$OMP PARALLEL default(shared)
-    !!$omp do
     do
         if (rank==0) then
             if (rank==0) open (unit = 666, form="unformatted", file=trim(path) // 'guessP', status='replace', ACCESS="STREAM", action='write')
@@ -1946,8 +1944,6 @@
             CALL SYSTEM_CLOCK(c2)
             write (*,*) (c2-c1)/rate
             if ((c2-c1)/rate >300) stop
-            !call cpu_time(time)
-            !if (time-timeHack >300) stop
         end if
         ilo=iminloc(y(:))
         ihi=imaxloc(y(:))
@@ -1989,8 +1985,6 @@
             end if
         end if
     end do
-    !!$omp end do
-    !!$OMP END PARALLEL
 
     END SUBROUTINE amoeba_private
 
