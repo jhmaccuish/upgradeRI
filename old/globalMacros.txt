@@ -1,2 +1,0 @@
-#define PROD_SIZE 5
-#define TYPES_SIZE 4

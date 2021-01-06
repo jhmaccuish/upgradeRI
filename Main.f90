@@ -16,7 +16,7 @@
 
     use Header
     use routines
-    !use bobyqa_module
+    use bobyqa_module
 
     implicit none
 
@@ -37,17 +37,20 @@
     integer :: apath(Tperiods + 1,numSims) !this is the path at the start of each period, so we include the 'start' of death
     integer :: combinedData(3,24,numSims)
     real (kind=rk) :: AIME(Tperiods + 1,numSims)
+    real (kind=rk) :: agridslice(Tperiods+1,numPointsA), maxIncslice(Tperiods)
 
     !For regression
-    real (kind=rk):: yreg(24, 3*numsims)
-    real (kind=rk) :: xreg(24, 3*numsims, 24+2)
-    logical :: mask(24,3*numsims) !, ols
-    real (kind=rk) :: beta(24+2, 1)
+    real (kind=rk):: yreg(regPeriods, 3*numsims)
+    real (kind=rk) :: xreg(regPeriods, 3*numsims, regPeriods-1+controls), assetstore( 3*numsims)
+    logical :: mask(regPeriods,3*numsims) !, ols
+    real (kind=rk) :: beta(regPeriods+2, 1)
     real (kind=rk), allocatable :: yreg2(:, :)
     real (kind=rk), allocatable :: xreg2(:, :, :)
     logical, allocatable :: mask2(:,:)
 
-    real (kind=rk) :: start, finish, moments(3,24),weights(3,24)
+    real (kind=rk) :: start, finish
+    real (kind=rk), allocatable :: moments(:,:),weights(:,:)
+    INTEGER (KIND=8) :: c1loc, c2loc
     real (kind=rk), allocatable :: y(:) !, p(:,:)
     integer :: action, ios, requiredl, typeSim
     integer ::SPA,i, lamb
@@ -56,14 +59,16 @@
     real (kind=rk) :: gmmScorce
     !real (kind=rk) :: indxrk
     !real (kind=rk) :: optLambda
-    logical:: recal = .false.
+    logical:: recal = .true.
     logical :: file_exists
     real (kind=rk), allocatable :: x(:), xl(:), xu(:)
-    real (kind=rk) :: rhobeg, rhoend
-    real (kind=rk) :: importStructure(6,24*3*numsims),  medianA !,amax(Tperiods)
+    real (kind=rk) :: rhobeg, rhoend, medianA
+    !real (kind=rk) :: importStructure(6,24*3*numsims),   !,amax(Tperiods)
     real (kind=rk), allocatable :: sterrs(:)
     character(len=1024) :: outFile
-    integer :: j, dimAboveMed, counter
+    integer :: j, dimAboveMed, counter, total
+    character(len=2) :: temp2
+    type (modelObjectsType) :: modelObjects(numPointsType,Tperiods)
 
 #ifdef mpiBuild
     integer :: provided
@@ -75,6 +80,7 @@
     !WRITE(*,*) TRIM(cwd)
     !call cpu_time(timeHack)
     call cpu_time(start)
+    CALL SYSTEM_CLOCK(c1loc)
 
 #ifdef mpiBuild    
     call MPI_Init_thread(MPI_THREAD_MULTIPLE,provided,ierror)!mpi_init
@@ -92,92 +98,50 @@
 #endif
 
     call setModel
-    !if (NM) then
-    !    allocate(y(dimEstimation+1), p(dimEstimation+1,dimEstimation))
-    !else
+    write (*,*) "Done"
     allocate(x(dimEstimation), xl(dimEstimation), xu(dimEstimation),sterrs(dimEstimation))
     rhobeg = 0.4
-    !end if
 
-
-    !    !Earning type 1 - uneducated couple
-    !    params%delta(1,3) = 9.083298
-    !    params%delta(1,2)=0.029333
-    !    params%delta(1,1)=-0.00023
-    !
-    !    params%spouseInc(1) = 5121!6235.8998884204320
-    !
-    !    !Earning type 2 - uneducated single
-    !#if TYPES_SIZE > 1
-    !    params%delta(2,3) = 8.5256042
-    !    params%delta(2,2)= 0.061582208
-    !    params%delta(2,1)= -0.0005901
-    !    params%spouseInc(2) = 5282
-    !#endif
-    !
-    !    !Earning type 3 - educated single
-    !#if TYPES_SIZE > 2
-    !    params%delta(3,3) = 7.906901
-    !    params%delta(3,2)= 0.094386
-    !    params%delta(3,1)= -0.00091
-    !    params%spouseInc(3) = 6840
-    !#endif
-    !
-    !#if TYPES_SIZE > 3
-    !    params%delta(4,3) = 7.392151
-    !    params%delta(4,2)= 0.121426
-    !    params%delta(4,1)= -0.00117
-    !    params%spouseInc(4) = 7684
-    !#endif
-
-
-    !params%thetab = 700000000 !2.899476882946300E-002
     !historic excahnge rate 1.657347 taken from https://www.ofx.com/en-gb/forex-news/historical-exchange-rates/yearly-average-rates/
     !params%k= 215000*1.657347*(101.9/162.9)!from De Nardi, French, Jones
     params%k = 215*0.647491/0.8131991
 
-
-    params%nu = 0.7 !0.465961054093721 !0.489447013499279! 0.455688293518331 ! 0.518965309049116 !  0.509238327116098  !0.503632895230470 !0.525701440155937 ! 0.330639470815664
-    params%beta = 1.0 !0.995215700427888 ! 0.973148936962498  !0.986727981493142! 0.996592226255899  !  0.986357800876955  ! 1.00000000000000! 0.999965608083641  ! 0.986701722470645
-    params%gamma = 7 !  4.00794815142518  !3.17936997498581! 4.25299731750991 ! 5.49316011629655 !6.32167143715174! 4.31646852872327 !6.59553977038513 !  1.25523751463278
-    !params%thetab = 100.0*700000000 ! 28072812873.2562 ! 28319331859.8928 !942211880.074711 ! 28778043030.9356 !37857189401.5407 ! 43461745124.7349 ! 8380790861.40518
-
-
-    allocate(y(4))
+    allocate(y(dimEstimation))
     open (unit = 304,file=trim(path) // 'paramsBin',  ACCESS="STREAM", action='read')
-    read (304) y
+    read (304) y(1:4)
     close(unit=304)
 
     params%nu = y(1)
-    params%beta = y(2)
+    params%beta =  y(2)
     params%gamma = y(3)
-    params%thetab = y(4)
-    !params%thetab = 100.00
+    params%thetab =  y(4)
 
-    params%lambda = 0.00001
-    !params%lambda =  0.000001 !1.0 !1.0E-8 !1.0 !100.0 !9.996559952862711E-004
-    params%lambda = 0.0000001
-    !params%lambda = 0.000001 !0.0001
+
+
     if (dimEstimation == 4) then
         params%lambda = 1.0
     else
         params%lambda =  1.0E-6 !1.0E-7 !100 !1.0E-5 !9.0E-8!
     end if
-    !params%thetab = 100 !39991832534.4503! 700000000 !  30000.00 !0.0 !params%thetab - 0.25*params%thetab
 
     params%BNDnu(1) =  0.1
     params%BNDnu(2) =  0.7
     params%BNDbeta(1) =  0.85
     params%BNDbeta(2) =  1.05
-    params%BNDgamma(1) = 1.1
+    params%BNDgamma(1) = 1.5
     params%BNDgamma(2) = 9
     params%BNDthetab(1) = 1.0 !0.01*700000000
     params%BNDthetab(2) = 30000.00 !100.0*700000000
+    params%BNDlambda(1) = 1.0D-9 !0.01*700000000
+    params%BNDlambda(2) = 0.1 !100.0*700000000
 
     x(1) = (params%nu - params%BNDnu(1))/(params%BNDnu(2)-params%BNDnu(1))
     x(2) = (params%beta - params%BNDbeta(1))/(params%BNDbeta(2)-params%BNDbeta(1))
     x(3) = (params%gamma - params%BNDgamma(1))/(params%BNDgamma(2)-params%BNDgamma(1))
     x(4) = (params%thetab -  params%BNDthetab(1))/(params%BNDthetab(2)-params%BNDthetab(1))
+    if (dimEstimation == 5) then
+        x(5) = (params%lambda -  params%BNDlambda(1))/(params%BNDlambda(2)-params%BNDlambda(1))
+    end if
 
     call setupMisc(params,grids)
     params%startA = maxval(grids%initialAssets)
@@ -187,109 +151,159 @@
 #endif
 
 #ifdef _WIN64
-    if (rank == 0) then
-        write (*,*) "Press 1 to check GMM values, 2 for single run, 3 to estimate, 4 repeat regressions, 5 Calculate SE"
-        read (*,*) action
-    end if
+    !if (rank == 0) then
+    !    write (*,*) "Press 1 to check GMM values, 2 for single run, 3 to estimate, 4 repeat regressions, 5 Calculate SE"
+    !    read (*,*) action
+    !end if
+    action =2
 #ifdef mpiBuild
     call MPI_Bcast( action, 1, MPI_INTEGER ,0, mpi_comm_world, ierror)
     if (ierror.ne.0) stop 'mpi problem171'
 #endif       
 #else
     action =3
-#endif  
-    open (unit = 1001,file=trim(pathMoments) // 'moments.txt', action='read', IOSTAT = ios)
-    open (unit = 1002,file=trim(pathMoments) // 'assetmom.txt', action='read', IOSTAT = ios)
-    open (unit = 1003,file=trim(pathMoments) // 'Weight.txt', action='read', IOSTAT = ios)
-    open (unit = 1004,file=trim(pathMoments) // 'weightAsset.txt', action='read', IOSTAT = ios)
-    read (1001, *) moments(1,:)
-    read (1002, *) moments(2,:)
-    read (1003, *) weights(1,:)
-    read (1004, *) weights(2,:)
-    if (dimEstimation >= 5) then
-        moments(3,1) = 0.6492912
-        weights(3,1) = 0.0131797
-    end if
-    !weights = 1/weights
-    close (unit=1001)
-    close (unit=1002)
-    close (unit=1003)
-    close (unit=1004)
-    !Set asset grid
-    do typeSim = 1, numPointsType
-        call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
-    end do
+#endif 
 
-    if (action .EQ. 1) then
-        do typeSim = 1, numPointsType
-            call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
-        end do
-
-        open (unit = 1001,file=trim(pathMoments) // 'moments.txt', action='read', IOSTAT = ios)
-        open (unit = 1002,file=trim(pathMoments) // 'assetmom.txt', action='read', IOSTAT = ios)
-        open (unit = 1003,file=trim(pathMoments) // 'Weight.txt', action='read', IOSTAT = ios)
-        open (unit = 1004,file=trim(pathMoments) // 'weightAsset.txt', action='read', IOSTAT = ios)
+    !Select the moments to match
+    !if (action /= 2) then
+    !        #ifdef _WIN64
+    !        if (rank == 0) then
+    !            write (*,*) "Press 1 to check GMM values, 2 for single run, 3 to estimate, 4 repeat regressions, 5 Calculate SE"
+    !            read (*,*) action
+    !        end if
+    !#ifdef mpiBuild
+    !        call MPI_Bcast( action, 1, MPI_INTEGER ,0, mpi_comm_world, ierror)
+    !        if (ierror.ne.0) stop 'mpi problem171'
+    !#endif
+    !#else
+    !        action =3
+    !#endif
+    select case (momentsToUse)
+    case (1)
+        allocate( moments(3,24),weights(3,24))
+        open (unit = 1001,file=trim(pathMoments) // 'LSMoments_60.txt', action='read', IOSTAT = ios)
+        open (unit = 1002,file=trim(pathMoments) // 'AssetMoments_60.txt', action='read', IOSTAT = ios)
+        open (unit = 1003,file=trim(pathMoments) // 'WeightLS_60.txt', action='read', IOSTAT = ios)
+        open (unit = 1004,file=trim(pathMoments) // 'weightAsset_60.txt', action='read', IOSTAT = ios)
+        open (unit = 1005,file=trim(pathMoments) // 'Belief_60.txt', action='read', IOSTAT = ios)
+        open (unit = 1006,file=trim(pathMoments) // 'WeightBelief_60.txt', action='read', IOSTAT = ios)
         read (1001, *) moments(1,:)
         read (1002, *) moments(2,:)
         read (1003, *) weights(1,:)
         read (1004, *) weights(2,:)
+        if (dimEstimation >= 5) then
+            read (1005, *) moments(3,1)
+            read (1006, *) weights(3,1)
+        end if
+        weights = 1/max(weights,0.0000001)
+        close (unit=1001)
+        close (unit=1002)
+        close (unit=1003)
+        close (unit=1004)
+        close (unit=1005)
+        close (unit=1006)
+    case (2)
+        allocate( moments(3,1),weights(3,1))
+        open (unit = 1001,file=trim(pathMoments) // 'RegA.txt', action='read', IOSTAT = ios)
+        open (unit = 1002,file=trim(pathMoments) // 'RegAboveMed.txt', action='read', IOSTAT = ios)
+        open (unit = 1003,file=trim(pathMoments) // 'WeightReg.txt', action='read', IOSTAT = ios)
+        open (unit = 1004,file=trim(pathMoments) // 'WeightRegAboveMed.txt', action='read', IOSTAT = ios)
+        open (unit = 1005,file=trim(pathMoments) // 'Belief_60.txt', action='read', IOSTAT = ios)
+        open (unit = 1006,file=trim(pathMoments) // 'WeightBelief_60.txt', action='read', IOSTAT = ios)
+        read (1001, *) moments(1,1)
+        read (1002, *) moments(2,1)
+        read (1003, *) weights(1,1)
+        read (1004, *) weights(2,1)
+        if (dimEstimation >= 5) then
+            read (1005, *) moments(3,1)
+            read (1006, *) weights(3,1)
+        end if
         weights = 1/weights
         close (unit=1001)
         close (unit=1002)
         close (unit=1003)
         close (unit=1004)
+        close (unit=1005)
+        close (unit=1006)
+    case(3)
+        allocate( moments(3*3,24),weights(3*3,24))
+        do spa=1,3
+            write (temp2,'(I2)') 59+spa
+
+            open (unit = 1001,file=trim(trim(pathMoments) // 'LSMoments_' // trim(adjustl(temp2)) ) // '.txt', action='read', IOSTAT = ios)
+            open (unit = 1002,file=trim(trim(pathMoments) // 'AssetMoments_' // trim(adjustl(temp2)) ) // '.txt', action='read', IOSTAT = ios)
+            open (unit = 1003,file=trim(trim(pathMoments) // 'WeightLS_' // trim(adjustl(temp2)) ) // '.txt', action='read', IOSTAT = ios)
+            open (unit = 1004,file=trim(trim(pathMoments) // 'weightAsset_' // trim(adjustl(temp2)) ) // '.txt', action='read', IOSTAT = ios)
+            open (unit = 1005,file=trim(trim(pathMoments) // 'Belief_' // trim(adjustl(temp2)) ) // '.txt', action='read', IOSTAT = ios)
+            open (unit = 1006,file=trim(trim(pathMoments) // 'WeightBelief_' // trim(adjustl(temp2)) ) // '.txt', action='read', IOSTAT = ios)
+            read (1001, *) moments((spa-1)*3+1,:)
+            read (1002, *) moments((spa-1)*3+2,:)
+            read (1003, *) weights((spa-1)*3+1,:)
+            read (1004, *) weights((spa-1)*3+2,:)
+            if (dimEstimation >= 5) then
+                read (1005, *) moments((spa-1)*3+3,1)
+                read (1006, *) weights((spa-1)*3+3,1)
+            end if
+            weights = 1/weights
+            close (unit=1001)
+            close (unit=1002)
+            close (unit=1003)
+            close (unit=1004)
+            close (unit=1005)
+            close (unit=1006)
+
+        end do
+    end select
+    !end if
+    !Set asset grid
+    !do typeSim = 1, numPointsType
+    !    call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
+    !end do
+    do typeSim = 1, numPointsType
+        call getassetgrid( params,maxIncslice ,agridslice)
+        grids%Agrid(typeSim,:,:) = agridslice
+        grids%maxInc(typeSim,:) = maxIncslice
+    end do
+
+    if (action .EQ. 1) then
         !Set asset grid
         do typeSim = 1, numPointsType
             call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
         end do
-        !gmmScorce =  gmm_criteria(x)
         gmmScorce = gmm(params,grids,moments,weights, .false.)
         !
         if (rank==0) write (*,*), 'GMM Criteria is ', gmmScorce
         gmmScorce = gmm(params,grids,moments,weights, .false.,.false. )
         if (rank==0) write (*,*), 'GMM Criteria is ', gmmScorce
-        stop
-        gmmScorce = gmm(params,grids,moments,weights, .false.,.false. )
-        if (rank==0) write (*,*), 'GMM Criteria is ', gmmScorce
-        gmmScorce = gmm(params,grids,moments,weights, .false.,.false. )
-        if (rank==0) write (*,*), 'GMM Criteria is ', gmmScorce
-        gmmScorce = gmm(params,grids,moments,weights, .false.,.false. )
-        if (rank==0) write (*,*), 'GMM Criteria is ', gmmScorce
-
-        !call func(4, x, gmmScorce)
-        !if (rank==0) write (*,*), 'GMM Criteria is ', gmmScorce
-        !p(1,1) = 0.236200045532760 !0.240191353041616
-        !p(1,2) = 0.999995559030882  !0.999477774429760
-        !p(1,3) = 1.57028307631512 ! 1.93680557456545
-        !p(1,4) = 0.887053363134520  !0.493786285559129
-        !p(1,5) = -2.864712075930465E-006 ! -3.533369493611974E-006
-        !p(1,6) = 1.962853923390662E-002 !2.421007064408893E-002
-        !optLambda =  9.996559952862711E-004 !0.836387480497043
-        !
-        !open (unit = 666, form="unformatted", file=trim(path) // 'guessP.txt', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
-        !read (666) p
-        !close (unit=666)
-        !
-        !open (unit = 667, form="unformatted", file=trim(path) // 'guessY.txt', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
-        !read (667) Y
-        !close (unit=667)
-        !
-        !optLambda = p(1,7)
-        !!Lambda = 0.436387480497043 is best!!!!
-        !do indxrk = -0.3, 0.3, 0.1
-        !    p(1,7) = optLambda + indxrk*optLambda
-        !    if (rank==0) write (*,*), 'For lambda = ', p(1,7), indxrk
-        !    gmmScorce =  gmm_criteria(p(1,:))
-        !    if (rank==0) write (*,*), 'GMM Criteria is ', gmmScorce
-        !end do
     else if (action .EQ. 2) then
         do typeSim = 1, numPointsType
-            call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
+            call getassetgrid( params,maxIncslice ,agridslice)
+            grids%Agrid(typeSim,:,:) = agridslice
+            grids%maxInc(typeSim,:) = maxIncslice
         end do
         !upper limit 10?
-        lamb=  7! 9 !8 !0!  6 ! 5 !3 ! 0! 2! 4 !8 !3 !1 !2
+        lamb=  8 !6 !7
+        !lamb = 1
+        ! 9 !8 !0!  6 ! 5 !3 ! 0! 2! 4 !8 !3 !1 !2
         params%lambda=10.0**-lamb
-        write (*,*) params%lambda
+        !params%gamma = 5
+        !x(1) = 6.522674D-01
+        !x(2) = 5.626104D-01
+        !x(3) =5.224251D-01
+        !x(4) = 6.383511D-01
+        !x(5) = 4.051395D-01
+        !params%nu = params%BNDnu(1)+x(1)*(params%BNDnu(2)-params%BNDnu(1))
+        !params%beta = params%BNDbeta(1)+x(2)*(params%BNDbeta(2)-params%BNDbeta(1))
+        !params%gamma = params%BNDgamma(1)+ x(3)*(params%BNDgamma(2)-params%BNDgamma(1))
+        !params%thetab = params%BNDthetab(1)+x(4)*(params%BNDthetab(2)-params%BNDthetab(1))
+        if (dimEstimation == 5) then
+        params%lambda = params%BNDlambda(1)+x(5)*(params%BNDlambda(2)-params%BNDlambda(1))
+        ! = locx5/abs(((0.6**(1-params%nu)*5000**params%nu)**(1-params%gamma))/(1-params%gamma))
+        !write (*,*) params%lambda
+        end if
+
+        write (*,*)     params%nu, params%beta,  params%gamma,  params%thetab
+         if (dimEstimation == 5)  write (*,*) params%lambda
         call solveOuterLoop(params, grids )
         !        do typeSim = 1, numPointsType
         !            call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
@@ -345,91 +359,25 @@
         do typeSim = 1, numPointsType
             call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
         end do
-        open (unit = 1001,file=trim(pathMoments) // 'moments.txt', action='read', IOSTAT = ios)
-        open (unit = 1002,file=trim(pathMoments) // 'assetmom.txt', action='read', IOSTAT = ios)
-        open (unit = 1003,file=trim(pathMoments) // 'Weight.txt', action='read', IOSTAT = ios)
-        open (unit = 1004,file=trim(pathMoments) // 'weightAsset.txt', action='read', IOSTAT = ios)
 
-        read (1001, *) moments(1,:)
-        read (1002, *) moments(2,:)
-        read (1003, *) weights(1,:)
-        read (1004, *) weights(2,:)
-        close (unit=1001)
-        close (unit=1002)
-        close (unit=1003)
-        close (unit=1004)
-        weights = 1/weights
-        !        !if (NM)   then
-        !            if (rank==0) then
-        !                print '("Setting up initial guess for hilling climbing algorithm")'
-        !            end if
-        !
-        !#ifdef _WIN64
-        !            if (rank == 0) then
-        !                write (*,*) "Press 1 to load, 2 to do fresh"
-        !                read (*,*) action
-        !            end if
-        !#ifdef mpiBuild
-        !            call MPI_Bcast( action, 1, MPI_INTEGER ,0, mpi_comm_world, ierror)
-        !            if (ierror.ne.0) stop 'mpi problem171'
-        !#endif
-        !
-        !            if (action == 1) then
-        !                open (unit = 666, form="unformatted", file=trim(path) // 'guessP', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
-        !                read (666) p
-        !                close (unit=666)
-        !
-        !                open (unit = 667, form="unformatted", file=trim(path) // 'guessY', status='unknown', ACCESS="STREAM", action='read', IOSTAT = ios)
-        !                read (667) Y
-        !                close (unit=667)
-        !            else
-        !                call initialGuess(rank,params,grids,moments,weights,p,y)
-        !            end if
-        !#else
-        !            call initialGuess(rank,params,grids,moments,weights,p,y)
-        !#endif
-        !
-        !
-        !#ifdef mpiBuild
-        !            call mpi_barrier(mpi_comm_world, ierror)
-        !            if (ierror.ne.0) stop 'mpi problem180'
-        !#endif
-        !
-        !            !open (unit=201, form="unformatted", file=trim(path) // 'CombinedData', ACCESS="STREAM", action='write', IOSTAT = ios)
-        !            !open (unit=211, file='..\\out\guess2.txt', status='unknown', action='write')
-        !            call amoeba(p,y, 0.00001_rk,gmm_criteria,iter,.TRUE.,0.0_rk) !0.0001_rk!0.001_rk!0.0001_rk !0.001_rk!0.07_rk!0.0001054 !0.000000001_rk !
-        !            !if (rank==0) close (unit=211)
-        !
-        !            if (rank==0) then
-        !                print '("P = ",f6.3)',P(1,:)
-        !                print '("Y = ",f16.3)',Y
-        !
-        !                inquire (iolength=requiredl)  P(1,:)
-        !                open (unit = 201,file=trim(path) // 'params.txt',  status='unknown',recl=requiredl, action='write', IOSTAT = ios)
-        !                !open (unit=201, file='..\\out\params.txt', status='unknown',recl=requiredl, action='write')
-        !
-        !                write (201, * ) P(1,:)
-        !
-        !                close (unit=201)
-        !
-        !                print '("Generating files")'
-        !            end if
-        !        else
         xl = 0.0
         xu = 1.0
-        rhoend =  0.00001_rk !0.0000001_rk !
+        rhoend =  0.000001_rk!0.00001_rk
         INQUIRE(file=trim(path_bobyqa) // 'location', EXIST=file_exists)
         !if (rank==0) write(*,*) file_exists
-        !call bobyqa (dimEstimation, 2*dimEstimation+1, x, xl, xu, rhobeg, rhoend, 3, 2000, func, .TRUE., file_exists)
+        call bobyqa(dimEstimation, 2*dimEstimation+1, x, xl, xu, rhobeg, rhoend, 3, 2000, func, .TRUE., file_exists)
         !       end if
         if (rank==0) write (*,*) x
         if (rank==0) write (*,*) params%nu, params%beta, params%gamma, params%thetab
         if (rank==0) then
-            !allocate(y(dimEstimation))
             y(1) = params%nu
             y(2) = params%beta
             y(3) = params%gamma
             y(4) = params%thetab
+            if (dimEstimation==5) then
+                y(5) = params%lambda
+            end if
+
             inquire (iolength=requiredl)  y
             open (unit = 302,file=trim(path) // 'params.txt', recl=requiredl, action='write', IOSTAT = ios)
             write (*,*) ios
@@ -451,10 +399,10 @@
             close(unit=305)
 
         end if
-        call solveValueFunction( params, grids, .FALSE., .FALSE. )
+        call solveValueFunction( params, grids, modelObjects, .FALSE., .FALSE. )
 
         if (rank==0) then
-            call simWithUncer(params, grids, grids%Simy, cpath, apath, lpath, ypath ,AIME, TrueSPA, .TRUE.) !vpath,
+            call simWithUncer(params, grids, grids%Simy, cpath, apath, lpath, ypath ,AIME, TrueSPA, modelObjects, .TRUE.) !vpath,
             call writetofile(grids,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
             !call writetofileByType(grids,params,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME)
         end if
@@ -463,94 +411,110 @@
         if (ierror.ne.0) stop 'mpi problem180'
 #endif   
     elseif (action .EQ. 4) then
-        do lamb= 7,7! 4,4!3,3
-            params%lambda=10.0**-lamb
-            write (*,*) "Lambda is ", params%lambda
-            do typeSim = 1, numPointsType
-                call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
-            end do
+        write (*,*)     params%nu, params%beta,  params%gamma,  params%thetab
+        write (*,*) params%lambda
+        do typeSim = 1, numPointsType
+            call getassetgrid( params, grids%maxInc(typeSim,:), grids%Agrid(typeSim,:,:))
+        end do
 
-            xreg = 0.0
-            do SPA =1,3
-                if (rank == 0) write (*,*) ' SPA ', spa
-                call setSPA(SPA)
-                if (modelChoice==1 .OR. SPA==1) then
-                    if (recal) call solveValueFunction( params, grids, .TRUE., .TRUE. )
-                end if
-                if (rank == 0) then
-                    call simWithUncer(params, grids, grids%Simy, cpath, apath, lpath, ypath, AIME, SPA, .false. ) ! vpath,
-                    combinedData(SPA,:,:) = apath(52-startAge+1:75-startAge+1,:)*(2*lpath(52-startAge+1:75-startAge+1,:)-1)
-                    call writetofileAge(grids,params,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME, 59+SPA)
-                    do i = 1, 24
-                        yreg(i,1+(SPA-1)*numsims:SPA*numsims) = lpath(i,:)
-                        xreg(i,1+(SPA-1)*numsims:SPA*numsims,1) = abs(i<Tretire+SPA-1)
-                        xreg(i,1+(SPA-1)*numsims:SPA*numsims,2) = grids%Agrid(1,1, apath(i,:) )
-                        xreg(i,1+(SPA-1)*numsims:SPA*numsims,3) = 1.0
-                        if (i>1) xreg(i,1+(SPA-1)*numsims:SPA*numsims,i+2) = 1.0
-                    end do
-                end if
-            end do
-            !real (kind=rk) :: ypath(Tperiods, numSims)
-            !        real (kind=rk), intent(in) :: y(t, n)
-            !real (kind=rk), intent(in) :: x(t, n, k)
-            !logical, intent(in) :: mask(t,n), ols
-            !real (kind=rk), intent(out) :: beta(k, 1)
+        xreg = 0.0
+        do SPA =1,3
+            if (rank == 0) write (*,*) ' SPA ', spa
+            call setSPA(SPA)
+            if (modelChoice==1 .OR. SPA==1) then
+                if (recal) call solveValueFunction( params, grids, modelObjects, .TRUE., .TRUE. )
+            end if
             if (rank == 0) then
-                mask = .true.
-                call doReg(yreg, xreg, 3*numsims, 24, 24+2, mask, .false., beta)
-                write (*,*) 'Treatment effect', beta(1,1)
-                inquire (iolength=requiredl) combinedData
-                !print *, path
-                !print *, trim(path) // 'CombinedData'
-                !open (unit=201, form="unformatted", file=trim(path) // 'CombinedData', ACCESS="STREAM", action='write', IOSTAT = ios)
-                !write (201)  combinedData
-                !close( unit=201)
+                call simWithUncer(params, grids, grids%Simy, cpath, apath, lpath, ypath, AIME, SPA, modelObjects, .false. ) ! vpath,
+                !combinedData(SPA,:,:) = apath(52-startAge+1:75-startAge+1,:)*(2*lpath(52-startAge+1:75-startAge+1,:)-1)
+                call writetofileAge(grids,params,ypath, cpath, apath, vpath, lpath, grids%Simy,AIME, 59+SPA)
+                do i = firstReg, lastReg
+                    !y variable is labour supply
+                    yreg(i-firstReg+1,1+(SPA-1)*numsims:SPA*numsims) = lpath(i,:)
+                    !Indicator below spa
+                    xreg(i-firstReg+1,1+(SPA-1)*numsims:SPA*numsims,1) = abs(i<Tretire+SPA-1)
+                    !Wealth
+                    !xreg(i-firstReg+1,1+(SPA-1)*numsims:SPA*numsims,2) = grids%Agrid(1,1, apath(i,:) )
+                    if (i==9) then
+                        assetstore(1+(SPA-1)*numsims:SPA*numsims) = grids%Agrid(1,1, apath(i,:) )
+                    end if
+                    !Constant
+                    xreg(i-firstReg+1,1+(SPA-1)*numsims:SPA*numsims,controls) = 1.0
+                    !Age dummy with first period exclude category
+                    if (i>1) xreg(i,1+(SPA-1)*numsims:SPA*numsims,i-firstReg+controls) = 1.0
+                end do
+            end if
+            if (modelChoice==1 ) then
+                do i=1,Tperiods
+                    do j=1,4
+                        if (allocated(modelObjects(j,i)%EV) ) deallocate(modelObjects(j,i)%EV )
+                        if (allocated(modelObjects(j,i)%policy) ) deallocate(modelObjects(j,i)%policy)
+                        if (allocated(modelObjects(j,i)%V) ) deallocate(modelObjects(j,i)%V)
+                    end do
+                end do
+            end if
+        end do
 
-                importStructure = 0.0
-                medianA = median(xreg(9,:,2))
-                medianA = 24846.00
-                write (*,*) "median assets", medianA
-                dimAboveMed = count(xreg(9,:,2)>medianA)
-                write (*,*) dimAboveMed
+        if (rank == 0) then
+            mask = .true.
+            call doReg(yreg, xreg, 3*numsims, regPeriods, regPeriods-1+controls, mask, .false., beta)
+            write (*,*) 'Treatment effect', beta(1,1)
+            !inquire (iolength=requiredl) combinedData
+            !print *, path
+            !print *, trim(path) // 'CombinedData'
+            !open (unit=201, form="unformatted", file=trim(path) // 'CombinedData', ACCESS="STREAM", action='write', IOSTAT = ios)
+            !write (201)  combinedData
+            !close( unit=201)
+
+            !importStructure = 0.0
+            !medianA = median(xreg(9,:,2))
+            medianA = 34869.00 ! 24846.00
+            write (*,*) "median assets", medianA
+            dimAboveMed = count(assetstore>medianA)
+            Total = count(xreg(9,:,2)>0.0)
+            write (*,*) dimAboveMed, 'of', total, 'above med'
+            if (dimAboveMed > 10) then
                 counter = 0
-                allocate(yreg2(24, dimAboveMed), xreg2(24, dimAboveMed, 24+2), mask2(24,dimAboveMed))
+                allocate(yreg2(regPeriods, dimAboveMed), xreg2(regPeriods, dimAboveMed, regPeriods-1+controls), mask2(regPeriods,dimAboveMed))
                 do j = 1,3*numsims
-                    if (xreg(9,j,2) > medianA) then
+                    if (assetstore(j) > medianA) then
                         counter = counter + 1
                         !write(*,*) counter
                         yreg2(:, counter) = yreg(:, j)
                         xreg2(:, counter, :) =  xreg(:, j, :)
                         mask2(:,counter) = mask(:,j)
                     end if
-                    do i=1,24
+                    do i= firstReg, lastReg
 
-                        importStructure(1,(j-1)*24+i) = j
-                        importStructure(2,(j-1)*24+i) = 51 + i
-                        importStructure(3,(j-1)*24+i) = yreg(i,j)
-                        if (j <= numsims ) importStructure(4,(j-1)*24+i) = 60
-                        if (j <= 2*numsims .AND. j> numsims ) importStructure(4,(j-1)*24+i) = 61
-                        if ( j> 2*numsims ) importStructure(4,(j-1)*24+i) = 62
-                        !if (i >=11) importStructure(4,(j-1)*24+i) = 1.0 !xreg(i,j,2)
-                        !!xreg(i,1+(SPA-1)*numsims:SPA*numsims,3) = 1.0
-                        !if (i >=10 .AND. j <= 2*numsims ) importStructure(4,(j-1)*24+i) = 1.0
-                        !if (i >=9 .AND. j <= numsims ) importStructure(4,(j-1)*24+i) = 1.0
-                        importStructure(5,(j-1)*24+i) = xreg(i,j,2)
-                        importStructure(6,(j-1)*24+i) = xreg(i,j,1)
-                        !if (i>1) xreg(i,j,1+i) =1.0
-                        !xreg(i, j, 24+2) = 1.0
+                        !importStructure(1,(j-1)*24+i) = j
+                        !importStructure(2,(j-1)*24+i) = 51 + i
+                        !importStructure(3,(j-1)*24+i) = yreg(i,j)
+                        !if (j <= numsims ) importStructure(4,(j-1)*24+i) = 60
+                        !if (j <= 2*numsims .AND. j> numsims ) importStructure(4,(j-1)*24+i) = 61
+                        !if ( j> 2*numsims ) importStructure(4,(j-1)*24+i) = 62
+                        !!if (i >=11) importStructure(4,(j-1)*24+i) = 1.0 !xreg(i,j,2)
+                        !!!xreg(i,1+(SPA-1)*numsims:SPA*numsims,3) = 1.0
+                        !!if (i >=10 .AND. j <= 2*numsims ) importStructure(4,(j-1)*24+i) = 1.0
+                        !!if (i >=9 .AND. j <= numsims ) importStructure(4,(j-1)*24+i) = 1.0
+                        !importStructure(5,(j-1)*24+i) = xreg(i,j,2)
+                        !importStructure(6,(j-1)*24+i) = xreg(i,j,1)
+                        !!if (i>1) xreg(i,j,1+i) =1.0
+                        !!xreg(i, j, 24+2) = 1.0
                     end do
                 end do
-                write (outfile,'(I1)') lamb
-                outfile = trim(path) // 'testcase_output_fort' // trim(outfile) // '.txt'
-                open (unit = 1001,file=outfile, action='write', IOSTAT = ios)
-                write (1001,  '(6F15.2)',  IOSTAT = ios) importStructure
-                close (unit=1001)
+                write (*,*) "Mean wealth of those above median: ", sum(xreg2(9, :, 2))/dimAboveMed
+                !write (outfile,'(I1)') lamb
+                !outfile = trim(path) // 'testcase_output_fort' // trim(outfile) // '.txt'
+                !open (unit = 1001,file=outfile, action='write', IOSTAT = ios)
+                !write (1001,  '(6F15.2)',  IOSTAT = ios) importStructure
+                !close (unit=1001)
 
-                call doReg(yreg2, xreg2, dimAboveMed, 24, 24+2, mask2, .false., beta)
+                call doReg(yreg2, xreg2, dimAboveMed, regPeriods, regPeriods-1+controls, mask2, .false., beta)
                 write (*,*) 'Treatment effect above median', beta(1,1)
                 deallocate(yreg2, xreg2, mask2)
             end if
-        end do
+        end if
+
     elseif (action .EQ. 5) then
         call getStandardErrors(dimEstimation, params, grids, moments, weights, sterrs)
 
@@ -558,7 +522,10 @@
 
     if (rank==0) then
         call cpu_time(finish)
-        print '("Time = ",f11.3," seconds.")',finish-start
+        CALL SYSTEM_CLOCK(c2loc)
+
+        print '("Time = ",f11.3," seconds.")', (c2loc-c1loc)/rate
+        print '("Tot CPU time = ",f11.3," seconds.")', finish-start
     end if
 #ifdef mpiBuild
     call mpi_barrier(mpi_comm_world, ierror)
@@ -601,11 +568,17 @@
     integer,intent(in)               :: n
     real(rk),dimension(:),intent(in) :: x
     real(rk),intent(out)             :: f
+    real(rk) :: locx5
+
     params%nu = params%BNDnu(1)+x(1)*(params%BNDnu(2)-params%BNDnu(1))
     params%beta = params%BNDbeta(1)+x(2)*(params%BNDbeta(2)-params%BNDbeta(1))
     params%gamma = params%BNDgamma(1)+ x(3)*(params%BNDgamma(2)-params%BNDgamma(1))
     params%thetab = params%BNDthetab(1)+x(4)*(params%BNDthetab(2)-params%BNDthetab(1))
-    if (n == 5) params%lambda = x(5)
+    if (n == 5) then
+        params%lambda = params%BNDlambda(1)+x(5)*(params%BNDlambda(2)-params%BNDlambda(1))
+        ! = locx5/abs(((0.6**(1-params%nu)*5000**params%nu)**(1-params%gamma))/(1-params%gamma))
+        !write (*,*) params%lambda
+    end if
 
     f = gmm(params,grids,moments,weights)
     end subroutine func

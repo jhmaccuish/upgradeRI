@@ -9,21 +9,31 @@
     integer, parameter :: hp = selected_real_kind(20)
     integer, parameter :: li = 8
 
-    integer, parameter :: numPointsType = TYPES_SIZE !1!
+    integer, parameter :: momentsToUse = 1
+
+    integer, parameter :: numPointsType = 4 !TYPES_SIZE !1!
 #ifdef _WIN64
-    integer, parameter :: numPointsA =   30 !90 !  120!  !140 !110 !120 !30 !30 !120!10!30!100!50!
+#ifdef IFS
+    integer, parameter :: num_main_threads =  2 !4 !2
+    integer, parameter :: num_secd_threads =  18! 4*16
+    integer, parameter :: numPointsA =  110! 110
 #else
-    integer, parameter :: numPointsA = 120!120!10!30!100!50!
+    integer, parameter :: num_main_threads =   2
+    integer, parameter :: num_secd_threads =   4
+    integer, parameter :: numPointsA = 30! 110 ! 200!  !140 !110 !120 !30 !30 !120!10!30!100!50!
+#endif     
+#else
+    integer, parameter :: numPointsA = 110!120!10!30!100!50!
 #endif 
 
-    integer, parameter :: numPointsProd = PROD_SIZE !5!10 !
+    integer, parameter :: numPointsProd = 5! PROD_SIZE !5!10 !
     integer, parameter :: numPointsY = 2*numPointsProd !20
     integer, parameter :: numAIME = 8!numPointsA  !10 !5
     integer, parameter :: numPointsL = 2
     integer, parameter :: numPointsSPA = 8 !11!8 !9!
     integer, parameter :: numPointsPost = 5
     real (kind=rk) :: probBlock = 1.0_rk/real(numPointsPost,rk)
-    integer, parameter :: numSims =  1000!50000 !1016!  5000!250! 10000!
+    integer, parameter :: numSims =  5000!50000 !1016!  5000!250! 10000!
     integer, parameter :: startAge =  52 !20!
     integer, parameter :: weeksYear = 52
     integer, parameter :: weeksWorking = 48
@@ -36,7 +46,7 @@
     integer, protected  :: dimEstimation = 4
     !integer, parameter :: spouseretire = 65 -startAge+1
     integer, parameter :: stopwrok = 80 -startAge+1
-    integer, parameter :: obsInitDist = 838 !874
+    integer, parameter :: obsInitDist = 193 !838 !874
     integer, parameter :: numMoments = 48
     integer :: modelChoice
     integer, protected :: EndPeriodRI
@@ -51,23 +61,35 @@
     integer, protected :: dimPol(Tperiods,numStates)
     integer, parameter :: flgRcvd = 1
     integer, parameter :: flgNotRcvd = 2
+    integer, parameter :: firstReg = 1! 7 !1
+    integer, parameter :: lastReg = 24 !12 !24
+    integer, parameter :: regPeriods = lastReg-firstReg+1
+    integer, parameter :: controls =  2 !lastReg-firstReg+1
     !integer, parameter :: knn = 2 !5 !
 
-#ifdef _WIN64          
+#ifdef _WIN64  
+#ifdef IFS 
+    character(len=250), parameter :: pathMoments = 'C:\Users\jamie_m\Dropbox\SourceCode\upgradeProject\moments\'
+    !character(len=250), parameter :: pathErrors = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\'
+    character(len=250), parameter :: pathInputs = 'C:\Users\jamie_m\Dropbox\SourceCode\upgradeProject\input\'
+    character(len=250), parameter :: path_bobyqa = 'C:\Users\jamie_m\bobyqa\'
+#else
     character(len=250), parameter :: pathMoments = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\moments\'
     !character(len=250), parameter :: pathErrors = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\'
     character(len=250), parameter :: pathInputs = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\input\'
     character(len=250), parameter :: path_bobyqa = 'C:\Users\Uctphen\bobyqa\'
-#else
-    character(len=250), parameter :: pathMoments = '/home/jamie/Dropbox/SourceCode/upgradeProject/moments/'
-    !character(len=250), parameter :: pathErrors = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\'
-    character(len=250), parameter :: pathInputs = '/home/jamie/Dropbox/SourceCode/upgradeProject/input/'
-    character(len=250), parameter :: path_bobyqa = 'C:\Users\Uctphen\bobyqa\'
+#endif
 
-    !character(len=250), parameter :: pathMoments = '~/FortrCodeRI/moments/'
-    !!character(len=250), parameter :: pathErrors = '~/FortrCodeRI/Errors/'
-    !character(len=250), parameter :: pathInputs = '~/FortrCodeRI/input/'
-    !character(len=250), parameter :: path_bobyqa = '/scratch/scratch/uctphen/store/'
+#else
+    !character(len=250), parameter :: pathMoments = '/home/jamie/Dropbox/SourceCode/upgradeProject/moments/'
+    !!character(len=250), parameter :: pathErrors = 'C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\'
+    !character(len=250), parameter :: pathInputs = '/home/jamie/Dropbox/SourceCode/upgradeProject/input/'
+    !character(len=250), parameter :: path_bobyqa = 'C:\Users\Uctphen\bobyqa\'
+
+    character(len=250), parameter :: pathMoments = '~/FortrCodeRI/moments/'
+    !character(len=250), parameter :: pathErrors = '~/FortrCodeRI/Errors/'
+    character(len=250), parameter :: pathInputs = '~/FortrCodeRI/input/'
+    character(len=250), parameter :: path_bobyqa = '/scratch/scratch/uctphen/store/'
 #endif 
     character(len=250), protected :: pathDataStore
     character(len=250), protected :: path
@@ -107,6 +129,7 @@
         real (kind=rk) :: BnDdb1(2)
         real (kind=rk) :: BnDdb2(2)
         real (kind=rk) :: BnDthetab(2)
+        real (kind=rk) :: BNDlambda(2)
     end type structparamstype
 
     type beliefStoreType
@@ -115,7 +138,12 @@
         real (kind=rk), allocatable :: distMean(:)
         integer(kind=li) :: storePostBin(184756) !storePostBin(:)
     end type beliefStoreType
-
+    
+    type ValueLoc
+        integer :: loc
+        real (kind=rk) :: Val
+    end type ValueLoc    
+    
     type gridsType
         real (kind=rk) :: Agrid(numPointsType,Tperiods+1,numPointsA)
         real (kind=rk) :: YgridExtrap(numPointsType,Tperiods,numPointsProd)
@@ -179,8 +207,8 @@
 
 #ifdef mpiBuild
     include 'mpif.h'
-    CHARACTER(len=32) :: arg
 #endif 
+    CHARACTER(len=32) :: arg
     integer :: globalCounter, globalSize
     ! First initialize the system_clock
     CALL system_clock(count_rate=cr)
@@ -191,9 +219,10 @@
 #ifdef _WIN64
     if (rank == 0) then
         write (*,*) "Press 1 for RE non uncert SPA, 2 for RE+uncert SPA, 3 for RI"
-
+    
         read (*,*) modelChoice
     end if
+    !modelChoice = 3
 #else
     CALL get_command_argument(1, arg)
     read(arg(1:1),'(i)') modelChoice
@@ -210,7 +239,7 @@
     case(1)
         dimVal(:,:) = reshape(((/(numPointsA,globalCounter=1,Tperiods), (numAIME,globalCounter=1,Tperiods), &
             (1,globalCounter=1,Tperiods),(1,globalCounter=1,Tperiods),(numPointsY,globalCounter=1,Tperiods)/)),(/Tperiods,numStates/))
-        dimPol= dimVal 
+        dimPol= dimVal
         !dimPol(:,:) = reshape(((/(numPointsA,globalCounter=1,Tperiods), (numAIME,globalCounter=1,Tperiods), &
         !    (1,globalCounter=1,Tperiods),(1,globalCounter=1,Tperiods),(numPointsY,globalCounter=1,Tperiods), &
         !    (numPointsL,globalCounter=1,Tperiods),(numPointsA,globalCounter=1,Tperiods)/)),(/Tperiods,numStates+ numChoices/))
@@ -219,8 +248,13 @@
         EndPeriodRI = 1
         numRIflags = 1
 #ifdef _WIN64
+#ifdef IFS
+        pathDataStore = "C:\jamie_mData\PolicyFuncsBaseline\"
+        path = "C:\Users\jamie_m\Dropbox\SourceCode\upgradeProject\VSProj - Copy\outBaseline\"
+#else
         pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncsBaseline\"
         path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\outBaseline\"
+#endif
 #else
         pathDataStore = "/scratch/scratch/uctphen/PolicyFuncsBaseline/"
         path = "/scratch/scratch/uctphen/outBaseline/"
@@ -231,8 +265,13 @@
         uncerRE = .TRUE.
         numRIflags = 1
 #ifdef _WIN64
+#ifdef IFS
+        pathDataStore = "C:\jamie_mData\PolicyFuncsRE\"
+        path = "C:\Users\jamie_m\Dropbox\SourceCode\upgradeProject\VSProj - Copy\outRE\"
+#else
         pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncsRE\"
         path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\outRE\"
+#endif
 #else
         pathDataStore = "/scratch/scratch/uctphen/policyFuncsRE/"
         path = "/scratch/scratch/uctphen/outRE/"
@@ -245,7 +284,7 @@
         !    (1,globalCounter=1,Tperiods),(numPointsSPA,globalCounter=1,TendRI-1),(1,globalCounter=EndPeriodRI,Tperiods),&
         !    (numPointsY,globalCounter=1,Tperiods), &
         !    (numPointsL,globalCounter=1,Tperiods),(numPointsA,globalCounter=1,Tperiods)/)),(/Tperiods,numStates+ numChoices/))
-    case default
+        case default
         numRIflags = 2
         sizeDimSPA = 999
         EndPeriodRI = TendRI
@@ -260,7 +299,7 @@
             if (globalCounter == EndPeriodRI) numRIflags = 1
             if (globalCounter < EndPeriodRI) then
                 dimVal(globalCounter,:) =  (/numPointsA,numAIME,globalSize,numpointsspa,numPointsY/)
-               ! dimPol(globalCounter,:) =  (/numPointsA,numAIME,globalSize,numpointsspa,numPointsY,numPointsL,numPointsA/)
+                ! dimPol(globalCounter,:) =  (/numPointsA,numAIME,globalSize,numpointsspa,numPointsY,numPointsL,numPointsA/)
             else
                 dimVal(globalCounter,:) =  (/numPointsA,numAIME,globalSize,1,numPointsY/)
                 !dimPol(globalCounter,:) =  (/numPointsA,numAIME,globalSize,1,numPointsY,numPointsL,numPointsA/)
@@ -269,13 +308,20 @@
         end do
         numRIflags = 2
 #ifdef _WIN64
+#ifdef IFS
+        pathDataStore = "C:\jamie_mData\PolicyFuncs\"
+        !path = "C:\Users\jamie_m\Dropbox\SourceCode\upgradeProject\VSProj - Copy\out\"
+        path = "C:\Users\jamie_m\Desktop\out\"
+#else
         pathDataStore = "C:\Users\Uctphen\DataStore\PolicyFuncs\"
         path = "C:\Users\Uctphen\Dropbox\SourceCode\upgradeProject\VSProj - Copy\out\"
+#endif
+
 #else
-        !pathDataStore = "/scratch/scratch/uctphen/PolicyFuncs/"
-        !path = "/scratch/scratch/uctphen/out/"
-        path = "/home/jamie/Dropbox/SourceCode/upgradeProject/VSProj - Copy/out/"
-        pathDataStore = "/home/jamie/tempFolder/"
+        pathDataStore = "/scratch/scratch/uctphen/PolicyFuncs/"
+        path = "/scratch/scratch/uctphen/out/"
+        !path = "/home/jamie/Dropbox/SourceCode/upgradeProject/VSProj - Copy/out/"
+        !pathDataStore = "/home/jamie/tempFolder/"
 #endif 
         dimEstimation = dimEstimation + 1
     end select

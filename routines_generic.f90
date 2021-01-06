@@ -945,20 +945,20 @@
                     do ixdim1 = 1, dim1, 1
                         if ((licon(ixdim1,ixdim2,ixdim3,ixdim4,ixdim5).ne.1) .and. (licon(ixdim1,ixdim2,ixdim3,ixdim4, &
                             ixdim5).ne.-2)) then
-                        sdfinplay = sdf(ixdim1, ixdim2, ixdim3, ixdim4, ixdim5)
-                        countinplay = countinplay + 1
-                        if ((sdfinplay.lt.0.995_rk) .or. (sdfinplay.gt.1.0005_rk)) then
-                            fail(1) = fail(1) + 1
-                            if ((sdfinplay.lt.0.99_rk) .or. (sdfinplay.gt.1.01_rk)) then
-                                fail(2) = fail(2) + 1
-                                if ((sdfinplay.lt.0.975_rk) .or. (sdfinplay.gt.1.025_rk)) then
-                                    fail(3) = fail(3) + 1
-                                    if ((sdfinplay.lt.0.95_rk) .or. (sdfinplay.gt.1.05_rk)) then
-                                        fail(4) = fail(4) + 1
+                            sdfinplay = sdf(ixdim1, ixdim2, ixdim3, ixdim4, ixdim5)
+                            countinplay = countinplay + 1
+                            if ((sdfinplay.lt.0.995_rk) .or. (sdfinplay.gt.1.0005_rk)) then
+                                fail(1) = fail(1) + 1
+                                if ((sdfinplay.lt.0.99_rk) .or. (sdfinplay.gt.1.01_rk)) then
+                                    fail(2) = fail(2) + 1
+                                    if ((sdfinplay.lt.0.975_rk) .or. (sdfinplay.gt.1.025_rk)) then
+                                        fail(3) = fail(3) + 1
+                                        if ((sdfinplay.lt.0.95_rk) .or. (sdfinplay.gt.1.05_rk)) then
+                                            fail(4) = fail(4) + 1
+                                        end if
                                     end if
                                 end if
                             end if
-                        end if
                         end if ! If not liquidity constrained
                     end do ! ixdim1
                 end do ! ixdim2
@@ -1070,7 +1070,7 @@
     do ixtest = 1, numtests, 1
         where ((indincnoncon.eq.1) .and. ((sdf.lt.(1.0_rk-testvalues(ixtest))) .or. (sdf.gt. &
             (1.0_rk+testvalues(ixtest)))))
-        countfail(:, ixtest) = 1
+            countfail(:, ixtest) = 1
         elsewhere
             countfail(:, ixtest) = 0
         end where
@@ -3218,7 +3218,7 @@
     integer, intent (in) :: extrapbot
     integer, intent (in) :: extraptop
     real (kind=rk), intent (in) :: xgrid(length)
-    real (kind=sp), intent (in) :: ygrid(dim,length)
+    real (kind=rk), intent (in) :: ygrid(dim,length)
     real (kind=rk), intent (in) :: xval
     real (kind=rk), intent (out) :: yval(dim)
 
@@ -3233,6 +3233,89 @@
     call linearinterpfromlocations_vec(xgrid, ygridloc, xlowerloc, xval, length, dim, extrapbot, extraptop, yval)
 
     end subroutine linearinterp1_vec
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !Qucik sort with index
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    recursive subroutine quicksort(array,last)
+    !idex 
+    type (ValueLoc), intent(inout):: array(:)
+    integer, intent(in) :: last
+    integer :: i,j,left,right
+    type (ValueLoc) :: temp, pivot
+
+    !last=size(array)
+
+    if (last.lt.50) then ! use insertion sort on small arrays
+        do i=2,last
+            temp=array(i)
+            do j=i-1,1,-1
+                if (array(j)%val.le.temp%val) exit
+                array(j+1)%val=array(j)%val
+                array(j+1)%loc=array(j)%loc
+            enddo
+            array(j+1)%val=temp%val
+            array(j+1)%loc=temp%loc
+        enddo
+        return
+    endif
+    ! find median of three pivot
+    ! and place sentinels at first and last elements
+    temp%val=array(last/2)%val
+    temp%loc=array(last/2)%loc
+    array(last/2)%val=array(2)%val
+    array(last/2)%loc=array(2)%loc
+    if (temp%val.gt.array(last)%val) then
+        array(2)%val=array(last)%val
+        array(2)%loc=array(last)%loc
+        array(last)%val=temp%val
+        array(last)%loc=temp%loc
+    else
+        array(2)%val=temp%val
+        array(2)%loc=temp%loc
+    endif
+    if (array(1)%val.gt.array(last)%val) then
+        temp%val=array(1)%val
+        temp%loc=array(1)%loc
+        array(1)%val=array(last)%val
+        array(1)%loc=array(last)%loc
+        array(last)%val=temp%val
+        array(last)%loc=temp%loc
+    endif
+    if (array(1)%val.gt.array(2)%val) then
+        temp%val=array(1)%val
+        temp%loc=array(1)%loc
+        array(1)%val=array(2)%val
+        array(1)%loc=array(2)%loc
+        array(2)%val=temp%val
+        array(2)%loc=temp%loc
+    endif
+    pivot%val=array(2)%val
+    pivot%loc=array(2)%loc
+    left=3
+    right=last-1
+    do
+        do while(array(left)%val.lt.pivot%val)
+            left=left+1
+        enddo
+        do while(array(right)%val.gt.pivot%val)
+            right=right-1
+        enddo
+        if (left.ge.right) exit
+        temp%val=array(left)%val
+        temp%loc=array(left)%loc
+        array(left)%val=array(right)%val
+        array(left)%loc=array(right)%loc
+        array(right)%val=temp%val
+        array(right)%loc=temp%loc
+        left=left+1
+        right=right-1
+    enddo
+    if (left.eq.right) left=left+1
+    call quicksort(array(1:left-1),left-1)
+    call quicksort(array(left:),last-left+1)
+
+    end subroutine quicksort
+
 
     end module routines_generic
 
